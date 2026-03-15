@@ -53,14 +53,15 @@ const DatePicker = ({ value, onChange }) => {
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
+    const defaultVal = value ? value : null;
     const fp = window.flatpickr(fpRef.current, {
       mode: "range",
       dateFormat: "d/m/Y",
       locale: "fr",
-      defaultDate: value,
+      defaultDate: defaultVal,
       onReady: function(selectedDates, dateStr, instance) {
-        if (selectedDates.length === 0) {
-          instance.jumpToDate(new Date(2026, 6, 1));
+        if (!defaultVal) {
+          instance.jumpToDate(new Date(2026, 6, 1)); // 6 is July (0-indexed)
         }
       },
       onChange: (selectedDates, dateStr) => {
@@ -68,7 +69,7 @@ const DatePicker = ({ value, onChange }) => {
       }
     });
     return () => fp.destroy();
-  }, [value]); // Re-initialize if the value changes externally (eg. switching cards)
+  }, [value]);
 
   return <input ref={fpRef} className="ki" placeholder="Sélectionner date(s)..." defaultValue={value} />;
 };
