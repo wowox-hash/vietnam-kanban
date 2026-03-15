@@ -258,7 +258,7 @@ function App() {
       <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
         {COLUMNS.map(col => {
           const cc = fc.filter(c => c.column === col.id).sort((a, b) => { const p = { high: 0, medium: 1, low: 2 }; return (p[a.priority] || 1) - (p[b.priority] || 1) }); return (
-            <div key={col.id} style={{ minWidth: 280, flex: 1 }} onDragOver={e => { e.preventDefault(); setDragOver(col.id) }} onDragLeave={() => setDragOver(null)} onDrop={() => drop(col.id)}>
+            <div key={col.id} style={{ minWidth: 280, flex: 1 }} onDragEnter={e => e.preventDefault()} onDragOver={e => { e.preventDefault(); setDragOver(col.id) }} onDragLeave={() => setDragOver(null)} onDrop={() => drop(col.id)}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} /><span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{col.title}</span><span style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "1px 8px", borderRadius: 10 }}>{cc.length}</span></div>
                 <button onClick={() => add(col.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)", lineHeight: 1 }}>+</button>
