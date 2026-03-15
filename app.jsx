@@ -308,7 +308,7 @@ function App() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-text-primary)" }}>🇻🇳 Vietnam 2026 — Kanban</h1>
-            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>2-22 juillet • {st.total} tâches • {st.booked + st.done} confirmées</p>
+            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>juillet • {st.total} tâches • {st.booked + st.done} confirmées</p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input className="ki" placeholder="Rechercher..." style={{ width: 140, padding: "6px 10px", fontSize: 13 }} value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
