@@ -1,5 +1,5 @@
 const { useState, useEffect, useRef } = React;
-const { DndContext, useDraggable, useDroppable, PointerSensor, TouchSensor, useSensor, useSensors, DragOverlay, closestCorners } = window.dndKit;
+const { DragDropContext, Droppable, Draggable } = window.ReactBeautifulDnd;
 const { createClient } = window.supabase;
 
 const SUPABASE_URL = 'https://phnwcmkbtaivdnzfaqoz.supabase.co';
@@ -206,24 +206,13 @@ function App() {
     return true;
   });
 
-  const handleDragStart = (e) => {
-    setDragCard(e.active.id);
-  };
-
-  const handleDragEnd = (e) => {
-    const { active, over } = e;
-    setDragCard(null);
-    if (over && active.id && over.id) {
-      if (typeof over.id === 'string' && ['todo', 'inprogress', 'booked', 'done'].includes(over.id)) {
-        up(active.id, { column: over.id });
-      }
+  const handleDragEnd = (result) => {
+    if (!result.destination) return;
+    const { source, destination, draggableId } = result;
+    if (source.droppableId !== destination.droppableId) {
+       up(draggableId, { column: destination.droppableId });
     }
   };
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
-  );
 
   const fup = (cid, e) => {
     // For local fake upload demonstration
@@ -269,20 +258,48 @@ function App() {
       </div>
 
       <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DragDropContext onDragEnd={handleDragEnd}>
           {COLUMNS.map(col => {
             const cc = fc.filter(c => c.column === col.id).sort((a, b) => { const p = { high: 0, medium: 1, low: 2 }; return (p[a.priority] || 1) - (p[b.priority] || 1) }); return (
-              <DroppableColumn key={col.id} col={col} cards={cc} onAdd={() => add(col.id)} setEditCard={setEditCard} dragCard={dragCard} />
+              <Droppable key={col.id} droppableId={col.id}>
+                {(provided, snapshot) => (
+                  <div ref={provided.innerRef} {...provided.droppableProps} style={{ minWidth: 280, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} /><span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{col.title}</span><span style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "1px 8px", borderRadius: 10 }}>{cc.length}</span></div>
+                      <button onClick={() => add(col.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)", lineHeight: 1 }}>+</button>
+                    </div>
+                    <div style={{ minHeight: 80, borderRadius: 10, padding: 2, ...(snapshot.isDraggingOver ? { border: "2px dashed #378ADD", background: "rgba(55,138,221,0.05)" } : {}) }}>
+                      {cc.map((card, index) => (
+                        <Draggable key={card.id} draggableId={card.id} index={index}>
+                          {(provided, snapshot) => {
+                            const ct2 = cat(card.category); return (
+                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`kc${snapshot.isDragging ? " dr" : ""}`} onClick={() => setEditCard(card.id)} style={{...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.6 : 1}}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                                <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}><span style={{ fontSize: 12 }}>{ct2.icon}</span> {ct2.label}</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  {card.owner && <div className="kb" style={{background: "var(--color-background-secondary)", border: ".5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)"}}>👑 {getParticipant(card.owner).name}</div>}
+                                  {card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}
+                                  {card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}
+                                </div>
+                              </div>
+                              <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
+                              {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ display: "flex" }}>{(card.assignees || []).slice(0, 4).map(aid => { const p = getParticipant(aid); return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null })}</div>
+                                {(card.docs || []).length > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>📎 {card.docs.length}</span>}
+                              </div>
+                            </div>
+                          )}}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  </div>
+                )}
+              </Droppable>
             )
           })}
-          <DragOverlay>
-            {dragCard ? (() => {
-               const c = cards.find(x => x.id === dragCard);
-               if(!c) return null;
-               return <DraggableCard card={c} isOverlay setEditCard={()=>{}} />
-            })() : null}
-          </DragOverlay>
-        </DndContext>
+        </DragDropContext>
       </div>
 
       {editCard && (() => {
@@ -346,53 +363,6 @@ function App() {
           </div>
         )
       })()}
-    </div>
-  );
-}
-
-function DroppableColumn({ col, cards, onAdd, setEditCard, dragCard }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.id });
-  return (
-    <div ref={setNodeRef} style={{ minWidth: 280, flex: 1 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} /><span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{col.title}</span><span style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "1px 8px", borderRadius: 10 }}>{cards.length}</span></div>
-        <button onClick={onAdd} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)", lineHeight: 1 }}>+</button>
-      </div>
-      <div style={{ minHeight: 80, borderRadius: 10, padding: 2, ...(isOver && dragCard ? { border: "2px dashed #378ADD", background: "rgba(55,138,221,0.05)" } : {}) }}>
-        {cards.map(card => <DraggableCard key={card.id} card={card} setEditCard={setEditCard} isDragging={dragCard === card.id} />)}
-      </div>
-    </div>
-  );
-}
-
-function DraggableCard({ card, setEditCard, isDragging, isOverlay }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: card.id });
-  const cat = CATEGORIES.find(c => c.id === card.category) || CATEGORIES[5];
-  
-  const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    zIndex: isOverlay ? 999 : undefined,
-    opacity: isDragging ? 0.4 : 1,
-    cursor: isDragging || isOverlay ? "grabbing" : "grab",
-    touchAction: "none"
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="kc" onClick={() => !isDragging && !isOverlay && setEditCard(card.id)}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-        <div className="kb" style={{ background: cat.color + "18", color: cat.color }}><span style={{ fontSize: 12 }}>{cat.icon}</span> {cat.label}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {card.owner && <div className="kb" style={{background: "var(--color-background-secondary)", border: ".5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)"}}>👑 {getParticipant(card.owner).name}</div>}
-          {card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}
-          {card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}
-        </div>
-      </div>
-      <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
-      {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex" }}>{(card.assignees || []).slice(0, 4).map(aid => { const p = getParticipant(aid); return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null })}</div>
-        {(card.docs || []).length > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>📎 {card.docs.length}</span>}
-      </div>
     </div>
   );
 }
