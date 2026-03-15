@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Vietnam Kanban App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f3f4f6;
+      --color-background-tertiary: #e5e7eb;
+      --color-border-primary: #d1d5db;
+      --color-border-secondary: #9ca3af;
+      --color-border-tertiary: #e5e7eb;
+      --color-text-primary: #111827;
+      --color-text-secondary: #4b5563;
+    }
+    body { margin: 0; padding: 0; font-family: system-ui, sans-serif; background: #f9fafb; }
+    
+    * {box-sizing:border-box;margin:0;padding:0}.kc{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:grab;transition:all .15s}.kc:hover{border-color:var(--color-border-secondary);transform:translateY(-1px)}.kc.dr{opacity:.4}.kb{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:6px}.ka{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#fff;flex-shrink:0}.bt{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .1s}.bt:hover{background:var(--color-background-secondary)}.bp{background:#378ADD;color:#fff;border-color:#378ADD}.bp:hover{background:#185FA5}.bd{color:#E24B4A}.bd:hover{background:#FCEBEB}.ki{width:100%;padding:8px 12px;border:.5px solid var(--color-border-tertiary);border-radius:8px;font-family:inherit;font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)}.ki:focus{outline:none;border-color:#378ADD}.ks{padding:6px 10px;border:.5px solid var(--color-border-tertiary);border-radius:8px;font-family:inherit;font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer}.ov{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;padding-top:5vh;z-index:100}.mo{background:var(--color-background-primary);border-radius:14px;width:520px;max-width:95vw;max-height:85vh;overflow-y:auto;padding:24px}.dc{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--color-background-secondary);border-radius:8px;font-size:12px;margin-bottom:6px}.di{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}.pg{height:4px;border-radius:2px;background:var(--color-background-tertiary);overflow:hidden}.pb{height:100%;border-radius:2px;transition:width .3s}.ct{cursor:pointer;user-select:none;transition:all .1s}.ct:hover{opacity:.8}
+  </style>
+
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="app.jsx"></script>
+  <script>
+      // Bootstrapper for JSX
+      window.addEventListener('load', () => {
+         // Load via Babel manually if needed or let babel-standalone handle script type="text/babel"
+      });
+  </script>
+</body>
+</html>
