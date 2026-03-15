@@ -31,6 +31,48 @@ const PARTICIPANTS = [
 
 function uid(){return "c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
+function formatDay(str) {
+  if (!str) return "";
+  if (str.startsWith("J") || !str.match(/\d{2}\/\d{2}\/\d{4}/)) return str;
+  const parseFr = (d) => { const p=d.split('/'); return parseInt(p[0])+" "+(["janv","févr","mars","avr","mai","juin","juil","août","sept","oct","nov","déc"][parseInt(p[1])-1]); };
+  if (str.includes(" au ")) {
+    const [start, end] = str.split(" au ");
+    const s = start.split('/');
+    const e = end.split('/');
+    if (s[1] === e[1] && s[2] === e[2]) {
+      return `${parseInt(s[0])}-${parseInt(e[0])} ${["janv","févr","mars","avr","mai","juin","juil","août","sept","oct","nov","déc"][parseInt(s[1])-1]}`;
+    }
+    return `${parseFr(start)} - ${parseFr(end)}`;
+  }
+  return parseFr(str);
+}
+
+const DatePicker = ({ value, onChange }) => {
+  const fpRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  useEffect(() => {
+    const fp = window.flatpickr(fpRef.current, {
+      mode: "range",
+      dateFormat: "d/m/Y",
+      locale: "fr",
+      defaultDate: value,
+      onReady: function(selectedDates, dateStr, instance) {
+        if (selectedDates.length === 0) {
+          instance.jumpToDate(new Date(2026, 6, 1));
+        }
+      },
+      onChange: (selectedDates, dateStr) => {
+        onChangeRef.current(dateStr);
+      }
+    });
+    return () => fp.destroy();
+  }, [value]); // Re-initialize if the value changes externally (eg. switching cards)
+
+  return <input ref={fpRef} className="ki" placeholder="Sélectionner date(s)..." defaultValue={value} />;
+};
+
 function App() {
   const [session, setSession] = useState(null);
   const [cards, setCards] = useState([]);
@@ -217,7 +259,7 @@ function App() {
                     <div key={card.id} className={`kc${dragCard === card.id ? " dr" : ""}`} draggable onDragStart={() => setDragCard(card.id)} onDragEnd={() => { setDragCard(null); setDragOver(null) }} onClick={() => setEditCard(card.id)}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
                         <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}><span style={{ fontSize: 12 }}>{ct2.icon}</span> {ct2.label}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}{card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{card.day}</span>}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}{card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}</div>
                       </div>
                       <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
                       {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
@@ -250,7 +292,7 @@ function App() {
                   <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Priorité</label><select className="ks" style={{ width: "100%" }} value={card.priority} onChange={e => up(card.id, { priority: e.target.value })}><option value="high">Haute</option><option value="medium">Moyenne</option><option value="low">Basse</option></select></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Jour(s)</label><input className="ki" value={card.day} onChange={e => up(card.id, { day: e.target.value })} placeholder="J1, J6-J7..." /></div>
+                  <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Dates</label><DatePicker value={card.day} onChange={val => up(card.id, { day: val })} /></div>
                   <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Statut</label><select className="ks" style={{ width: "100%" }} value={card.column} onChange={e => up(card.id, { column: e.target.value })}>{COLUMNS.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
                 </div>
                 <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Participants</label>
