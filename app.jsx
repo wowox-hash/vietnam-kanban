@@ -86,7 +86,12 @@ function App() {
   const signIn = async (e) => {
     e.preventDefault();
     setLoginMsg("Envoi du lien magique...");
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({ 
+      email,
+      options: {
+        emailRedirectTo: 'https://kanbanvietnam.netlify.app/'
+      }
+    });
     if (error) setLoginMsg(error.error_description || error.message);
     else setLoginMsg("Vérifiez votre boîte mail pour le lien de connexion !");
   };
