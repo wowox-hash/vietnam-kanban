@@ -89,7 +89,7 @@ function App() {
   const [cards, setCards] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [editCard, setEditCard] = useState(null);
-  const [filter, setFilter] = useState({category:"all",assignee:"all",search:""});
+  const [filter, setFilter] = useState({category:"all",owner:"all",assignee:"all",search:""});
   const [dragCard, setDragCard] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const [email, setEmail] = useState('');
@@ -254,6 +254,7 @@ function App() {
 
   const fc = cards.filter(c => {
     if (filter.category !== "all" && c.category !== filter.category) return false;
+    if (filter.owner !== "all" && c.owner !== filter.owner) return false;
     if (filter.assignee !== "all" && !c.assignees.includes(filter.assignee)) return false;
     if (filter.search && !c.title?.toLowerCase().includes(filter.search.toLowerCase()) && !c.desc?.toLowerCase().includes(filter.search.toLowerCase())) return false;
     return true;
@@ -310,9 +311,13 @@ function App() {
             <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>2-22 juillet • {st.total} tâches • {st.booked + st.done} confirmées</p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input className="ki" placeholder="Rechercher..." style={{ width: 160, padding: "6px 10px", fontSize: 13 }} value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
+            <input className="ki" placeholder="Rechercher..." style={{ width: 140, padding: "6px 10px", fontSize: 13 }} value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
             <select className="ks" value={filter.category} onChange={e => setFilter(f => ({ ...f, category: e.target.value }))}><option value="all">Toutes catégories</option>{CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}</select>
-            <select className="ks" value={filter.assignee} onChange={e => setFilter(f => ({ ...f, assignee: e.target.value }))}><option value="all">Tous</option>{PARTICIPANTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select className="ks" value={filter.owner} onChange={e => setFilter(f => ({ ...f, owner: e.target.value }))}>
+              <option value="all">Tous propriétaires</option>
+              {Array.from(new Set([...PARTICIPANTS.filter(p => ["max", "thuy", "trinh", "frederic"].includes(p.id)).map(p=>p.id), ...cards.map(c=>c.owner).filter(Boolean)])).map(id => <option key={id} value={id}>👑 {getParticipant(id)?.name}</option>)}
+            </select>
+            <select className="ks" value={filter.assignee} onChange={e => setFilter(f => ({ ...f, assignee: e.target.value }))}><option value="all">Tous participants</option>{PARTICIPANTS.map(p => <option key={p.id} value={p.id}>👥 {p.name}</option>)}</select>
             <button className="bt" onClick={signOut} style={{ fontSize: 12 }}>Déconnexion</button>
           </div>
         </div>
