@@ -92,6 +92,7 @@ function App() {
   const [dragCard, setDragCard] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loginMsg, setLoginMsg] = useState('');
   const fileRef = useRef(null);
 
@@ -137,15 +138,13 @@ function App() {
 
   const signIn = async (e) => {
     e.preventDefault();
-    setLoginMsg("Envoi du lien magique...");
-    const { error } = await supabase.auth.signInWithOtp({ 
+    setLoginMsg("Connexion en cours...");
+    const { error } = await supabase.auth.signInWithPassword({ 
       email,
-      options: {
-        emailRedirectTo: 'https://kanbanvietnam.netlify.app/'
-      }
+      password
     });
-    if (error) setLoginMsg(error.error_description || error.message);
-    else setLoginMsg("Vérifiez votre boîte mail pour le lien de connexion !");
+    if (error) setLoginMsg(error.error_description || error.message || "Email ou mot de passe incorrect.");
+    else setLoginMsg("Connecté !");
   };
 
   const signOut = async () => {
@@ -190,7 +189,8 @@ function App() {
           <h1 style={{fontSize:24,marginBottom:8,fontWeight:700}}>🇻🇳 Vietnam 2026</h1>
           <p style={{color:"var(--color-text-secondary)",marginBottom:24,fontSize:14}}>Connectez-vous pour accéder au Kanban.</p>
           <input className="ki" type="email" placeholder="Votre email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <button className="bt bp" style={{width:"100%",marginTop:16}} type="submit">Recevoir le lien magique</button>
+          <input className="ki" type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} style={{marginTop: 12}} required />
+          <button className="bt bp" style={{width:"100%",marginTop:16}} type="submit">Se connecter</button>
           <p style={{fontSize:13,color:"var(--color-text-secondary)",marginTop:16,textAlign:"center"}}>{loginMsg}</p>
         </form>
       </div>
