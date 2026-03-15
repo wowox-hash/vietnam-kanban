@@ -47,6 +47,15 @@ function formatDay(str) {
   return parseFr(str);
 }
 
+function getParticipant(idOrName) {
+  if (!idOrName) return null;
+  const p = PARTICIPANTS.find(x => x.id === idOrName);
+  if (p) return p;
+  let hash = 0;
+  for (let i = 0; i < idOrName.length; i++) hash = idOrName.charCodeAt(i) + ((hash << 5) - hash);
+  return { id: idOrName, name: idOrName, initials: idOrName.slice(0, 2).toUpperCase(), color: `hsl(${Math.abs(hash) % 360}, 65%, 45%)` };
+}
+
 const DatePicker = ({ value, onChange }) => {
   const fpRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -164,7 +173,7 @@ function App() {
   };
 
   const add = async (col) => {
-    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], docs: [], priority: "medium" };
+    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium" };
     setCards(cs => [...cs, nc]);
     setEditCard(nc.id);
     const { error } = await supabase.from('cards').insert([nc]);
@@ -260,12 +269,16 @@ function App() {
                     <div key={card.id} className={`kc${dragCard === card.id ? " dr" : ""}`} draggable onDragStart={() => setDragCard(card.id)} onDragEnd={() => { setDragCard(null); setDragOver(null) }} onClick={() => setEditCard(card.id)}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
                         <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}><span style={{ fontSize: 12 }}>{ct2.icon}</span> {ct2.label}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>{card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}{card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          {card.owner && <div className="kb" style={{background: "var(--color-background-secondary)", border: ".5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)"}}>👑 {getParticipant(card.owner).name}</div>}
+                          {card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}
+                          {card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}
+                        </div>
                       </div>
                       <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
                       {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex" }}>{(card.assignees || []).slice(0, 4).map(aid => { const p = PARTICIPANTS.find(x => x.id === aid); return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null })}</div>
+                        <div style={{ display: "flex" }}>{(card.assignees || []).slice(0, 4).map(aid => { const p = getParticipant(aid); return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null })}</div>
                         {(card.docs || []).length > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>📎 {card.docs.length}</span>}
                       </div>
                     </div>
@@ -296,8 +309,31 @@ function App() {
                   <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Dates</label><DatePicker value={card.day} onChange={val => up(card.id, { day: val })} /></div>
                   <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Statut</label><select className="ks" style={{ width: "100%" }} value={card.column} onChange={e => up(card.id, { column: e.target.value })}>{COLUMNS.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
                 </div>
-                <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Participants</label>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{PARTICIPANTS.map(p => { const a = (card.assignees || []).includes(p.id); return (<div key={p.id} className="ct" onClick={() => { const n = a ? card.assignees.filter(x => x !== p.id) : [...(card.assignees || []), p.id]; up(card.id, { assignees: n }) }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: a ? `2px solid ${p.color}` : "1px solid var(--color-border-tertiary)", background: a ? p.color + "15" : "transparent", fontSize: 13 }}><div className="ka" style={{ width: 20, height: 20, fontSize: 8, background: a ? p.color : "var(--color-background-tertiary)" }}>{p.initials}</div><span style={{ color: a ? p.color : "var(--color-text-secondary)", fontWeight: a ? 600 : 400 }}>{p.name}</span></div>) })}</div>
+                <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 200, background: "var(--color-background-secondary)", padding: 12, borderRadius: 8 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6, display: "block", textTransform: "uppercase" }}>👑 Owner</label>
+                      <div style={{display:"flex", gap:6}}>
+                        <select className="ks" style={{ width: "100%" }} value={card.owner || ""} onChange={e => up(card.id, { owner: e.target.value || null })}>
+                          <option value="">Sélectionner...</option>
+                          {PARTICIPANTS.filter(p => ["max", "thuy", "trinh", "frederic"].includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          {card.owner && !["max", "thuy", "trinh", "frederic"].includes(card.owner) && <option value={card.owner}>{card.owner}</option>}
+                        </select>
+                        <button className="bt" onClick={()=>{const n=prompt("Nom du nouveau propriétaire:"); if(n) up(card.id, {owner: n})}} style={{padding: "6px", fontSize: 12}}>+ Créer</button>
+                      </div>
+                    </div>
+                    <div style={{ flex: 2, minWidth: 260 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6, display: "block", textTransform: "uppercase" }}>👥 Tous les participants</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {PARTICIPANTS.map(p => { const a = (card.assignees || []).includes(p.id); return (<div key={p.id} className="ct" onClick={() => { const n = a ? card.assignees.filter(x => x !== p.id) : [...(card.assignees || []), p.id]; up(card.id, { assignees: n }) }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: a ? `2px solid ${p.color}` : "1px solid var(--color-border-tertiary)", background: a ? p.color + "15" : "transparent", fontSize: 13 }}><div className="ka" style={{ width: 20, height: 20, fontSize: 8, background: a ? p.color : "var(--color-background-tertiary)" }}>{p.initials}</div><span style={{ color: a ? p.color : "var(--color-text-secondary)", fontWeight: a ? 600 : 400 }}>{p.name}</span></div>) })}
+                        {(card.assignees || []).filter(aid => !PARTICIPANTS.find(x => x.id === aid)).map(aid => {
+                          const p = getParticipant(aid);
+                          return <div key={p.id} className="ct" onClick={() => { up(card.id, { assignees: card.assignees.filter(x => x !== p.id) }) }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: `2px solid ${p.color}`, background: p.color + "15", fontSize: 13 }} title="Cliquer pour retirer"><div className="ka" style={{ width: 20, height: 20, fontSize: 8, background: p.color }}>{p.initials}</div><span style={{ color: p.color, fontWeight: 600 }}>{p.name} ×</span></div>
+                        })}
+                        <button className="bt" onClick={()=>{const n=prompt("Nouveau participant:"); if(n && !(card.assignees||[]).includes(n)) up(card.id, {assignees: [...(card.assignees || []), n]})}} style={{padding: "4px 12px", borderRadius: 20, fontSize: 13}}>+ Autre</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Documents & preuves</label>
                   {(card.docs || []).map((doc, i) => (<div key={i} className="dc"><div className="di" style={{ background: doc.type === "pdf" ? "#E24B4A" : doc.type === "png" || doc.type === "jpg" ? "#378ADD" : "#534AB7" }}>{doc.type?.toUpperCase().slice(0, 3) || "DOC"}</div><div style={{ flex: 1 }}><p style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{doc.name}</p>{doc.size && <p style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{doc.size} • {doc.addedAt || "ajouté"}</p>}</div><button onClick={() => rd(card.id, i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 16 }}>×</button></div>))}
