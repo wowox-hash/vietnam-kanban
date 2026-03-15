@@ -187,6 +187,16 @@ function App() {
 
   const del = async (id) => {
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette tâche ?")) return;
+    
+    // First, delete any attached documents from storage to avoid orphan files
+    const card = cards.find(c => c.id === id);
+    if (card && card.docs && card.docs.length > 0) {
+      const pathsToDelete = card.docs.map(d => d.path).filter(Boolean);
+      if (pathsToDelete.length > 0) {
+        await supabase.storage.from('kanban_docs').remove(pathsToDelete);
+      }
+    }
+
     setCards(cs => cs.filter(c => c.id !== id));
     setEditCard(null);
     const { error } = await supabase.from('cards').delete().eq('id', id);
