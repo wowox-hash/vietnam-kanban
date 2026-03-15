@@ -95,6 +95,7 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMsg, setLoginMsg] = useState('');
+  const [resetMode, setResetMode] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -104,9 +105,17 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setResetMode(true);
+      }
       setSession(session);
     });
+
+    // Fallback detection via URL hash in case event fires too early or we hit reload
+    if (window.location.hash.includes('type=recovery')) {
+      setResetMode(true);
+    }
 
     return () => subscription.unsubscribe();
   }, []);
@@ -152,6 +161,20 @@ function App() {
     await supabase.auth.signOut();
   };
 
+  const updatePassword = async (e) => {
+    e.preventDefault();
+    setLoginMsg("Mise à jour...");
+    const { error } = await supabase.auth.updateUser({ password: password });
+    if (error) {
+      setLoginMsg(error.error_description || error.message || "Erreur lors de la mise à jour.");
+    } else {
+      setLoginMsg("Mot de passe mis à jour !");
+      setResetMode(false);
+      setPassword('');
+      alert("Votre mot de passe a été créé/modifié avec succès !");
+    }
+  };
+
   const up = async (id, u) => {
     // Optimistic update
     setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
@@ -184,6 +207,20 @@ function App() {
     }
   };
 
+  if (resetMode) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <form onSubmit={updatePassword} className="mo" style={{maxWidth:400,width:"100%",padding:32}}>
+          <h1 style={{fontSize:24,marginBottom:8,fontWeight:700}}>Nouveau mot de passe</h1>
+          <p style={{color:"var(--color-text-secondary)",marginBottom:24,fontSize:14}}>Veuillez créer votre mot de passe pour finaliser l'inscription ou la récupération.</p>
+          <input className="ki" type="password" placeholder="Nouveau mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          <button className="bt bp" style={{width:"100%",marginTop:16}} type="submit">Enregistrer</button>
+          <p style={{fontSize:13,color:"var(--color-text-secondary)",marginTop:16,textAlign:"center"}}>{loginMsg}</p>
+        </form>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -192,8 +229,14 @@ function App() {
           <p style={{color:"var(--color-text-secondary)",marginBottom:24,fontSize:14}}>Connectez-vous pour accéder au Kanban.</p>
           <input className="ki" type="email" placeholder="Votre email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <input className="ki" type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} style={{marginTop: 12}} required />
-          <button className="bt bp" style={{width:"100%",marginTop:16}} type="submit">Se connecter</button>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginTop: 16}}>
+            <button className="bt bp" style={{flex: 1}} type="submit">Se connecter</button>
+          </div>
           <p style={{fontSize:13,color:"var(--color-text-secondary)",marginTop:16,textAlign:"center"}}>{loginMsg}</p>
+          <button type="button" onClick={async () => {
+             if(!email) return alert("Veuillez saisir votre email d'abord !");
+             try { await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname }); alert("Un email de récupération vous a été envoyé si le compte existe."); } catch (e) { alert("Erreur."); }
+          }} style={{background:"none",border:"none",color:"#378ADD",fontSize:13,textDecoration:"underline",cursor:"pointer",width:"100%",marginTop:12}}>Mot de passe oublié ?</button>
         </form>
       </div>
     );
