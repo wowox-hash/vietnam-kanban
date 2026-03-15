@@ -257,17 +257,28 @@ function App() {
     }
   };
 
-  const fup = (cid, e) => {
-    // For local fake upload demonstration
+  const fup = async (cid, e) => {
     const fs = e.target.files;
     if (!fs.length) return;
-    const nd = Array.from(fs).map(f => ({ name: f.name, type: f.name.split('.').pop(), size: (f.size / 1024).toFixed(0) + " KB", addedAt: new Date().toLocaleDateString("fr-FR") }));
     const card = cards.find(c => c.id === cid);
-    up(cid, { docs: [...(card.docs || []), ...nd] });
+    const nd = [];
+    for (const f of fs) {
+      const fileExt = f.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+      const filePath = `${cid}/${fileName}`;
+      const { error } = await supabase.storage.from('kanban_docs').upload(filePath, f);
+      if (error) { alert("Erreur d'upload: " + error.message); continue; }
+      const { data } = supabase.storage.from('kanban_docs').getPublicUrl(filePath);
+      nd.push({ name: f.name, type: fileExt, size: (f.size / 1024).toFixed(0) + " KB", addedAt: new Date().toLocaleDateString("fr-FR"), path: filePath, url: data.publicUrl });
+    }
+    if (nd.length) up(cid, { docs: [...(card.docs || []), ...nd] });
   };
 
-  const rd = (cid, i) => {
+  const rd = async (cid, i) => {
+     if (!window.confirm("Supprimer ce document ?")) return;
      const card = cards.find(c => c.id === cid);
+     const doc = card.docs[i];
+     if (doc.path) await supabase.storage.from('kanban_docs').remove([doc.path]);
      up(cid, { docs: card.docs.filter((_, j) => j !== i) });
   };
   
@@ -391,7 +402,7 @@ function App() {
                   </div>
                 </div>
                 <div><label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Documents & preuves</label>
-                  {(card.docs || []).map((doc, i) => (<div key={i} className="dc"><div className="di" style={{ background: doc.type === "pdf" ? "#E24B4A" : doc.type === "png" || doc.type === "jpg" ? "#378ADD" : "#534AB7" }}>{doc.type?.toUpperCase().slice(0, 3) || "DOC"}</div><div style={{ flex: 1 }}><p style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{doc.name}</p>{doc.size && <p style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{doc.size} • {doc.addedAt || "ajouté"}</p>}</div><button onClick={() => rd(card.id, i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 16 }}>×</button></div>))}
+                  {(card.docs || []).map((doc, i) => (<div key={i} className="dc"><div className="di" style={{ background: doc.type === "pdf" ? "#E24B4A" : doc.type === "png" || doc.type === "jpg" ? "#378ADD" : "#534AB7" }}>{doc.type?.toUpperCase().slice(0, 3) || "DOC"}</div><div style={{ flex: 1 }}><a href={doc.url || "#"} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", textDecoration: doc.url ? "underline" : "none", display: "block", marginBottom: 2 }}>{doc.name}</a>{doc.size && <p style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{doc.size} • {doc.addedAt || "ajouté"}</p>}</div><button onClick={() => rd(card.id, i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 16 }}>×</button></div>))}
                   <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={e => fup(card.id, e)} />
                   <button className="bt" onClick={() => fileRef.current?.click()} style={{ width: "100%", marginTop: 4, fontSize: 13, color: "var(--color-text-secondary)" }}>+ Ajouter un document</button>
                 </div>
