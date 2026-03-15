@@ -25,7 +25,7 @@ const PARTICIPANTS = [
   { id: "frederic", name: "Frederic", initials: "FD", color: "#378ADD" },
   { id: "maianh", name: "Maï Anh", initials: "MA", color: "#D4537E" },
   { id: "trinh", name: "Trinh", initials: "TR", color: "#639922" },
-  { id: "bawai", name: "Ba Ngoai", initials: "BN", color: "#BA7517" },
+  { id: "bangoai", name: "Ba Ngoai", initials: "BN", color: "#BA7517" },
   { id: "thuy", name: "Thuy", initials: "TH", color: "#534AB7" },
   { id: "max", name: "Max", initials: "MX", color: "#D85A30" },
 ];
