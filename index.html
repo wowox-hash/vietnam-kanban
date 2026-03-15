@@ -31,17 +31,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js"></script>
-  <!-- Mobile Drag and Drop Polyfill -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0/default.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0/index.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0/scroll-behaviour.min.js"></script>
-  <script>
-    MobileDragDrop.polyfill({
-        holdToDrag: 300, // delay so scrolling still works
-        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
-    });
-    window.addEventListener('touchmove', function() {}, {passive: false});
-  </script>
+  <!-- DnD Kit -->
+  <script src="https://cdn.jsdelivr.net/npm/@dnd-kit/core@6.1.0/dist/core.umd.development.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@dnd-kit/utilities@3.2.2/dist/utilities.umd.development.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@dnd-kit/sortable@8.0.0/dist/sortable.umd.development.js" crossorigin></script>
 </head>
 <body>
   <div id="root"></div>
