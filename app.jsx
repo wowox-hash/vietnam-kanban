@@ -393,7 +393,7 @@ function App() {
                 <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200, background: "var(--color-background-secondary)", padding: 12, borderRadius: 8 }}>
-                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6, display: "block", textTransform: "uppercase" }}>👑 Owner</label>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6, display: "block", textTransform: "uppercase" }}>👑 Propriétaire de la tâche</label>
                       <div style={{display:"flex", gap:6}}>
                         <select className="ks" style={{ width: "100%" }} value={card.owner || ""} onChange={e => up(card.id, { owner: e.target.value || null })}>
                           <option value="">Sélectionner...</option>
