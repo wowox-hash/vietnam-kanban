@@ -183,30 +183,29 @@ function ConfirmDialog({ confirm, onCancel }) {
 }
 
 const DatePicker = ({ value, onChange }) => {
-  const fpRef = useRef(null);
-  const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const [raw, setRaw] = React.useState(value || "");
+  useEffect(() => { setRaw(value || ""); }, [value]);
 
-  useEffect(() => {
-    const defaultVal = value ? value : null;
-    const fp = window.flatpickr(fpRef.current, {
-      mode: "range",
-      dateFormat: "d/m/Y",
-      locale: "fr",
-      allowInput: true,
-      defaultDate: defaultVal,
-      onReady: function(selectedDates, dateStr, instance) {
-        if (!defaultVal) instance.jumpToDate(new Date(2026, 6, 1));
-      },
-      onOpen: function(selectedDates, dateStr, instance) {
-        if (!defaultVal && selectedDates.length === 0) instance.jumpToDate(new Date(2026, 6, 1));
-      },
-      onChange: (selectedDates, dateStr) => { onChangeRef.current(dateStr); }
-    });
-    return () => fp.destroy();
-  }, [value]);
+  const handleBlur = () => {
+    const v = raw.trim();
+    const single = /^\d{2}\/\d{2}\/\d{4}$/;
+    const range = /^\d{2}\/\d{2}\/\d{4} au \d{2}\/\d{2}\/\d{4}$/;
+    if (!v || single.test(v) || range.test(v)) {
+      onChange(v);
+    } else {
+      setRaw(value || "");
+    }
+  };
 
-  return <input ref={fpRef} className="ki" placeholder="Sélectionner date(s)..." defaultValue={value} />;
+  return (
+    <div>
+      <input className="ki" value={raw} onChange={e => setRaw(e.target.value)} onBlur={handleBlur}
+        placeholder="jj/mm/aaaa ou jj/mm/aaaa au jj/mm/aaaa" />
+      <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 4 }}>
+        Format : jj/mm/aaaa — ex: 01/07/2026 au 15/07/2026
+      </div>
+    </div>
+  );
 };
 
 // Budget tracking view with category breakdown, participant balances, and settlement
