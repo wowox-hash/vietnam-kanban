@@ -193,9 +193,13 @@ const DatePicker = ({ value, onChange }) => {
       mode: "range",
       dateFormat: "d/m/Y",
       locale: "fr",
+      allowInput: true,
       defaultDate: defaultVal,
       onReady: function(selectedDates, dateStr, instance) {
         if (!defaultVal) instance.jumpToDate(new Date(2026, 6, 1));
+      },
+      onOpen: function(selectedDates, dateStr, instance) {
+        if (!defaultVal && selectedDates.length === 0) instance.jumpToDate(new Date(2026, 6, 1));
       },
       onChange: (selectedDates, dateStr) => { onChangeRef.current(dateStr); }
     });
@@ -776,15 +780,6 @@ function ProfileView({ userName, userColor, session, onSave, onSignOut }) {
       {/* Display Name */}
       <div style={sectionStyle}>
         <label style={labelStyle}>Nom d'affichage</label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-          {PARTICIPANTS.map(p => (
-            <div key={p.id} className="ct" onClick={() => { setEditName(p.name); setSelectedColor(p.color); }}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 16, border: editName === p.name ? `2px solid ${p.color}` : "1px solid var(--color-border-tertiary)", background: editName === p.name ? p.color + "15" : "transparent", fontSize: 12 }}>
-              <div className="ka" style={{ width: 18, height: 18, fontSize: 7, background: editName === p.name ? p.color : "var(--color-background-tertiary)" }}>{p.initials}</div>
-              <span style={{ color: editName === p.name ? p.color : "var(--color-text-secondary)", fontWeight: editName === p.name ? 600 : 400 }}>{p.name}</span>
-            </div>
-          ))}
-        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <input className="ki" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Votre nom..."
             onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} />
@@ -1145,22 +1140,10 @@ function App() {
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div className="mo" style={{ maxWidth: 440, width: "100%", padding: 32 }}>
           <h1 style={{ fontSize: 24, marginBottom: 8, fontWeight: 700 }}>Qui êtes-vous ?</h1>
-          <p style={{ color: "var(--color-text-secondary)", marginBottom: 24, fontSize: 14 }}>Choisissez votre nom pour les commentaires et le chat.</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-            {PARTICIPANTS.map(p => (
-              <div key={p.id} className="ct" onClick={() => saveDisplayName(p.name, p.color)}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 12, border: "1px solid var(--color-border-tertiary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
-                <div className="ka" style={{ background: p.color }}>{p.initials}</div>
-                <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 16 }}>
-            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Ou entrez un autre nom :</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="ki" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Votre nom..." onKeyDown={e => { if (e.key === 'Enter' && nameInput.trim()) saveDisplayName(nameInput.trim()); }} />
-              <button className="bt bp" onClick={() => { if (nameInput.trim()) saveDisplayName(nameInput.trim()); }}>OK</button>
-            </div>
+          <p style={{ color: "var(--color-text-secondary)", marginBottom: 24, fontSize: 14 }}>Entrez votre nom pour les commentaires et le chat.</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="ki" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Votre nom..." onKeyDown={e => { if (e.key === 'Enter' && nameInput.trim()) saveDisplayName(nameInput.trim()); }} />
+            <button className="bt bp" onClick={() => { if (nameInput.trim()) saveDisplayName(nameInput.trim()); }}>OK</button>
           </div>
         </div>
         <Toast toast={toast} />
