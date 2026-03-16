@@ -1,5 +1,5 @@
 const { useState, useEffect, useRef } = React;
-const { DragDropContext, Droppable, Draggable } = window.HelloPangeaDnd;
+const { DragDropContext, Droppable, Draggable } = window.ReactBeautifulDnd;
 const { createClient } = window.supabase;
 
 const SUPABASE_URL = 'https://phnwcmkbtaivdnzfaqoz.supabase.co';
