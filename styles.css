@@ -208,3 +208,7 @@ body {
 .ct:hover {
   opacity: .8;
 }
+
+/* Leaflet z-index fixes */
+.leaflet-pane { z-index: 1; }
+.leaflet-top, .leaflet-bottom { z-index: 2; }
