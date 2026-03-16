@@ -692,7 +692,7 @@ function App() {
                                   {...provided.dragHandleProps}
                                   className={`kc${snapshot.isDragging ? " dr" : ""}`}
                                   onClick={() => setEditCard(card.id)}
-                                  style={{ ...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.6 : 1 }}
+                                  style={{ ...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.6 : 1, borderLeft: `3px solid ${ct2.color}` }}
                                 >
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
                                     <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}>
