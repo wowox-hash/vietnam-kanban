@@ -86,7 +86,10 @@ function parseDayToDate(str) {
 function parseDayKey(str) {
   const dt = parseDayToDate(str);
   if (!dt) return null;
-  return dt.toISOString().slice(0, 10);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function formatDayLong(dateKey) {
