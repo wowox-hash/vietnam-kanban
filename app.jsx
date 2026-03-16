@@ -725,6 +725,102 @@ function ChatView({ userName, session }) {
   );
 }
 
+// --- Profile View ---
+const AVATAR_COLORS = [
+  "#378ADD", "#D4537E", "#639922", "#BA7517", "#534AB7", "#D85A30",
+  "#E24B4A", "#1D9E75", "#EF9F27", "#888780", "#8B5CF6", "#EC4899",
+];
+
+function ProfileView({ userName, userColor, session, onSave, onSignOut }) {
+  const [editName, setEditName] = useState(userName || '');
+  const [selectedColor, setSelectedColor] = useState(userColor || getParticipant(userName)?.color || AVATAR_COLORS[0]);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState('');
+
+  const currentP = getParticipant(userName);
+  const displayColor = selectedColor || currentP?.color || AVATAR_COLORS[0];
+  const displayInitials = editName ? editName.slice(0, 2).toUpperCase() : currentP?.initials || '?';
+
+  const sectionStyle = { background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 20, marginBottom: 16 };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", marginBottom: 10, display: "block", letterSpacing: 0.5 };
+
+  const handleSaveName = async () => {
+    const name = editName.trim();
+    if (!name) return;
+    await onSave({ name, color: selectedColor });
+  };
+
+  const handleSaveColor = async (color) => {
+    setSelectedColor(color);
+    await onSave({ color });
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordMsg('');
+    if (!newPassword || newPassword.length < 6) { setPasswordMsg("Le mot de passe doit faire au moins 6 caractères."); return; }
+    if (newPassword !== confirmPassword) { setPasswordMsg("Les mots de passe ne correspondent pas."); return; }
+    const ok = await onSave({ password: newPassword });
+    if (ok) { setNewPassword(''); setConfirmPassword(''); setPasswordMsg("Mot de passe mis à jour !"); }
+  };
+
+  return (
+    <div style={{ padding: "20px 16px", maxWidth: 520, margin: "0 auto" }}>
+      {/* Avatar preview */}
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <div className="ka" style={{ width: 64, height: 64, fontSize: 22, background: displayColor, margin: "0 auto 12px" }}>{displayInitials}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--color-text-primary)" }}>{userName}</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{session?.user?.email}</div>
+      </div>
+
+      {/* Display Name */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Nom d'affichage</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+          {PARTICIPANTS.map(p => (
+            <div key={p.id} className="ct" onClick={() => { setEditName(p.name); setSelectedColor(p.color); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 16, border: editName === p.name ? `2px solid ${p.color}` : "1px solid var(--color-border-tertiary)", background: editName === p.name ? p.color + "15" : "transparent", fontSize: 12 }}>
+              <div className="ka" style={{ width: 18, height: 18, fontSize: 7, background: editName === p.name ? p.color : "var(--color-background-tertiary)" }}>{p.initials}</div>
+              <span style={{ color: editName === p.name ? p.color : "var(--color-text-secondary)", fontWeight: editName === p.name ? 600 : 400 }}>{p.name}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="ki" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Votre nom..."
+            onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} />
+          <button className="bt bp" onClick={handleSaveName} style={{ whiteSpace: "nowrap" }}>Enregistrer</button>
+        </div>
+      </div>
+
+      {/* Avatar Color */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Couleur de l'avatar</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {AVATAR_COLORS.map(color => (
+            <div key={color} className="ct" onClick={() => handleSaveColor(color)}
+              style={{ width: 36, height: 36, borderRadius: "50%", background: color, border: selectedColor === color ? "3px solid var(--color-text-primary)" : "3px solid transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              {selectedColor === color && <span style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Password */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Changer le mot de passe</label>
+        <input className="ki" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Nouveau mot de passe" style={{ marginBottom: 8 }} />
+        <input className="ki" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirmer le mot de passe" style={{ marginBottom: 8 }}
+          onKeyDown={e => { if (e.key === 'Enter') handlePasswordChange(); }} />
+        {passwordMsg && <p style={{ fontSize: 12, color: passwordMsg.includes("mis à jour") ? "#639922" : "#E24B4A", marginBottom: 8 }}>{passwordMsg}</p>}
+        <button className="bt bp" onClick={handlePasswordChange} style={{ width: "100%" }}>Mettre à jour le mot de passe</button>
+      </div>
+
+      {/* Sign out */}
+      <button className="bt bd" onClick={onSignOut} style={{ width: "100%", padding: "10px 0", fontSize: 14 }}>Déconnexion</button>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [cards, setCards] = useState([]);
@@ -746,6 +842,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [inlineInput, setInlineInput] = useState({ type: null, value: '', cardId: null });
   const [userName, setUserName] = useState(null);
+  const [userColor, setUserColor] = useState(null);
   const [nameInput, setNameInput] = useState('');
   const [activities, setActivities] = useState([]);
   const fileRef = useRef(null);
@@ -780,12 +877,14 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load display name from session metadata
+  // Load display name and color from session metadata
   useEffect(() => {
     if (session?.user?.user_metadata?.display_name) {
       setUserName(session.user.user_metadata.display_name);
+      setUserColor(session.user.user_metadata.avatar_color || null);
     } else if (session) {
       setUserName(null);
+      setUserColor(null);
     }
   }, [session]);
 
@@ -832,11 +931,28 @@ function App() {
     }]);
   };
 
-  const saveDisplayName = async (name) => {
-    const { error } = await supabase.auth.updateUser({ data: { display_name: name } });
+  const saveDisplayName = async (name, color) => {
+    const data = { display_name: name };
+    if (color) data.avatar_color = color;
+    const { error } = await supabase.auth.updateUser({ data });
     if (error) { notify("Erreur lors de l'enregistrement du nom.", "error"); return; }
     setUserName(name);
+    if (color) setUserColor(color);
     notify("Bienvenue, " + name + " !", "success");
+  };
+
+  const saveProfile = async (updates) => {
+    const data = {};
+    if (updates.name) data.display_name = updates.name;
+    if (updates.color) data.avatar_color = updates.color;
+    const authUpdate = { data };
+    if (updates.password) authUpdate.password = updates.password;
+    const { error } = await supabase.auth.updateUser(authUpdate);
+    if (error) { notify("Erreur : " + (error.message || "Mise à jour échouée."), "error"); return false; }
+    if (updates.name) setUserName(updates.name);
+    if (updates.color) setUserColor(updates.color);
+    notify("Profil mis à jour !", "success");
+    return true;
   };
 
   const signIn = async (e) => {
@@ -1032,7 +1148,7 @@ function App() {
           <p style={{ color: "var(--color-text-secondary)", marginBottom: 24, fontSize: 14 }}>Choisissez votre nom pour les commentaires et le chat.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
             {PARTICIPANTS.map(p => (
-              <div key={p.id} className="ct" onClick={() => saveDisplayName(p.name)}
+              <div key={p.id} className="ct" onClick={() => saveDisplayName(p.name, p.color)}
                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 12, border: "1px solid var(--color-border-tertiary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
                 <div className="ka" style={{ background: p.color }}>{p.initials}</div>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
@@ -1142,7 +1258,11 @@ function App() {
                 </select>
               </>
             )}
-            <button className="bt" onClick={signOut} style={{ fontSize: 12 }}>Déconnexion</button>
+            <div className="ct" onClick={() => setView('profile')}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, border: ".5px solid var(--color-border-tertiary)" }}>
+              <div className="ka" style={{ background: userColor || getParticipant(userName)?.color || "#378ADD", width: 22, height: 22, fontSize: 8 }}>{getParticipant(userName)?.initials || "?"}</div>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-primary)" }}>{userName}</span>
+            </div>
           </div>
         </div>
         {view === 'kanban' && (
@@ -1246,6 +1366,7 @@ function App() {
       {view === 'map' && <MapView cards={cards} onEditCard={setEditCard} />}
       {view === 'activity' && <ActivityView activities={activities} cards={cards} onEditCard={setEditCard} />}
       {view === 'chat' && <ChatView userName={userName} session={session} />}
+      {view === 'profile' && <ProfileView userName={userName} userColor={userColor} session={session} onSave={saveProfile} onSignOut={signOut} />}
 
       {/* Edit card modal */}
       {editCard && (() => {
