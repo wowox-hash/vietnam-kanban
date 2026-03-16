@@ -1,5 +1,4 @@
 const { useState, useEffect, useRef } = React;
-// Step 4: @hello-pangea/dnd — actively maintained fork of react-beautiful-dnd (same API)
 const { DragDropContext, Droppable, Draggable } = window.HelloPangeaDnd;
 const { createClient } = window.supabase;
 
@@ -54,6 +53,11 @@ function formatDay(str) {
   return parseFr(str);
 }
 
+function formatEur(n) {
+  if (n == null || isNaN(n)) return "0,00 €";
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
 function getParticipant(idOrName) {
   if (!idOrName) return null;
   const p = PARTICIPANTS.find(x => x.id === idOrName);
@@ -61,6 +65,43 @@ function getParticipant(idOrName) {
   let hash = 0;
   for (let i = 0; i < idOrName.length; i++) hash = idOrName.charCodeAt(i) + ((hash << 5) - hash);
   return { id: idOrName, name: idOrName, initials: idOrName.slice(0, 2).toUpperCase(), color: `hsl(${Math.abs(hash) % 360}, 65%, 45%)` };
+}
+
+// Calculates the minimum set of transfers to settle all debts
+function calculateSettlements(cards) {
+  const balances = {};
+
+  for (const card of cards) {
+    if (!card.cost || card.cost <= 0 || !card.paid_by || !card.split_among?.length) continue;
+    const share = card.cost / card.split_among.length;
+    balances[card.paid_by] = (balances[card.paid_by] || 0) + card.cost;
+    for (const pid of card.split_among) {
+      balances[pid] = (balances[pid] || 0) - share;
+    }
+  }
+
+  const debtors = [];
+  const creditors = [];
+  for (const [pid, balance] of Object.entries(balances)) {
+    if (balance > 0.01) creditors.push({ pid, amount: balance });
+    if (balance < -0.01) debtors.push({ pid, amount: -balance });
+  }
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
+
+  const settlements = [];
+  let di = 0, ci = 0;
+  while (di < debtors.length && ci < creditors.length) {
+    const amount = Math.min(debtors[di].amount, creditors[ci].amount);
+    if (amount > 0.01) {
+      settlements.push({ from: debtors[di].pid, to: creditors[ci].pid, amount: Math.round(amount * 100) / 100 });
+    }
+    debtors[di].amount -= amount;
+    creditors[ci].amount -= amount;
+    if (debtors[di].amount < 0.01) di++;
+    if (creditors[ci].amount < 0.01) ci++;
+  }
+  return settlements;
 }
 
 function Toast({ toast }) {
@@ -117,12 +158,161 @@ const DatePicker = ({ value, onChange }) => {
   return <input ref={fpRef} className="ki" placeholder="Sélectionner date(s)..." defaultValue={value} />;
 };
 
+// Budget tracking view with category breakdown, participant balances, and settlement
+function BudgetView({ cards, onEditCard }) {
+  const cardsWithCost = cards.filter(c => c.cost && c.cost > 0);
+  const totalSpend = cardsWithCost.reduce((s, c) => s + c.cost, 0);
+  const confirmedSpend = cardsWithCost.filter(c => c.column === "booked" || c.column === "done").reduce((s, c) => s + c.cost, 0);
+  const pendingSpend = totalSpend - confirmedSpend;
+
+  // Per-category totals
+  const byCat = CATEGORIES.map(cat => {
+    const amount = cardsWithCost.filter(c => c.category === cat.id).reduce((s, c) => s + c.cost, 0);
+    return { ...cat, amount };
+  }).filter(c => c.amount > 0).sort((a, b) => b.amount - a.amount);
+  const maxCatAmount = byCat.length ? byCat[0].amount : 1;
+
+  // Per-participant balances
+  const participantData = {};
+  for (const card of cardsWithCost) {
+    if (card.paid_by) {
+      if (!participantData[card.paid_by]) participantData[card.paid_by] = { paid: 0, owed: 0 };
+      participantData[card.paid_by].paid += card.cost;
+    }
+    if (card.split_among?.length) {
+      const share = card.cost / card.split_among.length;
+      for (const pid of card.split_among) {
+        if (!participantData[pid]) participantData[pid] = { paid: 0, owed: 0 };
+        participantData[pid].owed += share;
+      }
+    }
+  }
+  const participantRows = Object.entries(participantData)
+    .map(([pid, data]) => ({ ...data, pid, net: data.paid - data.owed, p: getParticipant(pid) }))
+    .sort((a, b) => b.net - a.net);
+
+  const settlements = calculateSettlements(cards);
+
+  const sectionStyle = { background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 20, marginBottom: 16 };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", marginBottom: 12, display: "block", letterSpacing: 0.5 };
+
+  return (
+    <div style={{ padding: "20px 16px", maxWidth: 800, margin: "0 auto" }}>
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {[
+          { label: "Total dépensé", value: totalSpend, color: "#378ADD" },
+          { label: "Confirmé", value: confirmedSpend, color: "#639922" },
+          { label: "En attente", value: pendingSpend, color: "#EF9F27" },
+          { label: "Nb. de dépenses", value: null, count: cardsWithCost.length, color: "#534AB7" },
+        ].map((item, i) => (
+          <div key={i} style={{ ...sectionStyle, marginBottom: 0, padding: 16, textAlign: "center" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", marginBottom: 6 }}>{item.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: item.color }}>
+              {item.value != null ? formatEur(item.value) : item.count}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-category breakdown */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Dépenses par catégorie</label>
+        {byCat.length === 0 && <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Aucune dépense enregistrée.</p>}
+        {byCat.map(cat => (
+          <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 28, textAlign: "center", fontSize: 16 }}>{cat.icon}</div>
+            <div style={{ width: 100, fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{cat.label}</div>
+            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--color-background-tertiary)", overflow: "hidden" }}>
+              <div style={{ width: (cat.amount / maxCatAmount * 100) + "%", height: "100%", borderRadius: 4, background: cat.color }} />
+            </div>
+            <div style={{ width: 90, textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>{formatEur(cat.amount)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Participant balance table */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Balance par participant</label>
+        {participantRows.length === 0 && <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Renseignez "Payé par" et "Partagé entre" sur vos cartes pour voir les balances.</p>}
+        {participantRows.length > 0 && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", paddingBottom: 8, borderBottom: ".5px solid var(--color-border-tertiary)" }}>
+              <span>Participant</span>
+              <span style={{ textAlign: "right" }}>A payé</span>
+              <span style={{ textAlign: "right" }}>Sa part</span>
+              <span style={{ textAlign: "right" }}>Solde</span>
+            </div>
+            {participantRows.map(row => (
+              <div key={row.pid} style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: ".5px solid var(--color-border-tertiary)", fontSize: 13 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="ka" style={{ width: 24, height: 24, fontSize: 9, background: row.p.color }}>{row.p.initials}</div>
+                  <span style={{ fontWeight: 500 }}>{row.p.name}</span>
+                </div>
+                <span style={{ textAlign: "right", color: "var(--color-text-secondary)" }}>{formatEur(row.paid)}</span>
+                <span style={{ textAlign: "right", color: "var(--color-text-secondary)" }}>{formatEur(row.owed)}</span>
+                <span style={{ textAlign: "right", fontWeight: 600, color: row.net > 0.01 ? "#639922" : row.net < -0.01 ? "#E24B4A" : "var(--color-text-secondary)" }}>
+                  {row.net > 0.01 ? "+" : ""}{formatEur(row.net)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Settlements */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Remboursements</label>
+        {settlements.length === 0 && participantRows.length > 0 && <p style={{ fontSize: 13, color: "#639922", fontWeight: 500 }}>Tout est équilibré !</p>}
+        {settlements.length === 0 && participantRows.length === 0 && <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Les remboursements apparaitront ici.</p>}
+        {settlements.map((s, i) => {
+          const from = getParticipant(s.from);
+          const to = getParticipant(s.to);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < settlements.length - 1 ? ".5px solid var(--color-border-tertiary)" : "none" }}>
+              <div className="ka" style={{ width: 28, height: 28, fontSize: 10, background: from.color }}>{from.initials}</div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{from.name}</span>
+              <span style={{ fontSize: 18, color: "var(--color-text-secondary)" }}>→</span>
+              <div className="ka" style={{ width: 28, height: 28, fontSize: 10, background: to.color }}>{to.initials}</div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{to.name}</span>
+              <span style={{ marginLeft: "auto", fontSize: 15, fontWeight: 700, color: "#E24B4A" }}>{formatEur(s.amount)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Expense list */}
+      <div style={sectionStyle}>
+        <label style={labelStyle}>Détail des dépenses</label>
+        {cardsWithCost.length === 0 && <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Aucune dépense enregistrée.</p>}
+        {cardsWithCost.sort((a, b) => (b.cost || 0) - (a.cost || 0)).map(card => {
+          const cat = CATEGORIES.find(c => c.id === card.category) || CATEGORIES[5];
+          const payer = card.paid_by ? getParticipant(card.paid_by) : null;
+          return (
+            <div key={card.id} onClick={() => onEditCard(card.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: ".5px solid var(--color-border-tertiary)", cursor: "pointer" }}>
+              <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{cat.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || "Sans titre"}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+                  {payer ? `Payé par ${payer.name}` : "Payeur non défini"}
+                  {card.split_among?.length ? ` · partagé entre ${card.split_among.length}` : ""}
+                </div>
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)", whiteSpace: "nowrap" }}>{formatEur(card.cost)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [cards, setCards] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [editCard, setEditCard] = useState(null);
-  // Step 6: filter initialized from localStorage; search always resets to ""
+  const [view, setView] = useState('kanban');
   const [filter, setFilter] = useState(() => {
     try {
       const saved = localStorage.getItem('kanban_filter');
@@ -136,15 +326,11 @@ function App() {
   const [toast, setToast] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
-  // Step 3: inline input state replaces both prompt() calls
   const [inlineInput, setInlineInput] = useState({ type: null, value: '', cardId: null });
   const fileRef = useRef(null);
-  // Step 1: debounce timers keyed by card id
   const debounceTimers = useRef({});
-  // Step 2: card ids that are local-only (not yet inserted to DB)
   const pendingCardIds = useRef(new Set());
 
-  // Step 6: persist filter changes to localStorage (search excluded)
   useEffect(() => {
     localStorage.setItem('kanban_filter', JSON.stringify({ ...filter, search: "" }));
   }, [filter]);
@@ -221,7 +407,6 @@ function App() {
     }
   };
 
-  // For dropdowns and immediate-value fields — skips DB write if card is pending insert
   const up = async (id, u) => {
     setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
     if (pendingCardIds.current.has(id)) return;
@@ -231,7 +416,6 @@ function App() {
     setSaving(false);
   };
 
-  // Step 1: debounced version for title/desc — batches keystrokes into one DB write per 500ms
   const upText = (id, u) => {
     setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
     if (pendingCardIds.current.has(id)) return;
@@ -245,15 +429,13 @@ function App() {
     }, 500);
   };
 
-  // Step 2: add() creates card locally only — DB insert deferred to closeModal()
   const add = (col) => {
-    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium", position: null };
+    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium", position: null, cost: null, paid_by: null, split_among: [] };
     pendingCardIds.current.add(nc.id);
     setCards(cs => [...cs, nc]);
     setEditCard(nc.id);
   };
 
-  // Step 2: closeModal() — inserts pending card on close, or discards it if title is empty
   const closeModal = () => {
     const id = editCard;
     setEditCard(null);
@@ -273,7 +455,6 @@ function App() {
   };
 
   const del = (id) => {
-    // Step 2: pending card has no DB row — just remove from local state
     if (pendingCardIds.current.has(id)) {
       pendingCardIds.current.delete(id);
       clearTimeout(debounceTimers.current[id]);
@@ -373,7 +554,6 @@ function App() {
     return true;
   });
 
-  // Step 5: position-based drag (within and across columns)
   const handleDragEnd = (result) => {
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
@@ -403,6 +583,7 @@ function App() {
     booked: cards.filter(c => c.column === "booked").length,
     done: cards.filter(c => c.column === "done").length
   };
+  const totalBudget = cards.filter(c => c.cost > 0).reduce((s, c) => s + c.cost, 0);
 
   if (!loaded) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-secondary)" }}>Chargement du Kanban...</div>;
 
@@ -411,121 +592,151 @@ function App() {
 
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh" }}>
+      {/* Header */}
       <div style={{ padding: "16px 20px", borderBottom: ".5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-text-primary)" }}>🇻🇳 Vietnam 2026 — Kanban</h1>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-text-primary)" }}>🇻🇳 Vietnam 2026</h1>
             <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>
-              juillet • {st.total} tâches • {st.booked + st.done} confirmées{saving ? " • Enregistrement…" : ""}
+              juillet • {st.total} tâches • {st.booked + st.done} confirmées
+              {totalBudget > 0 ? ` • ${formatEur(totalBudget)}` : ""}
+              {saving ? " • Enregistrement…" : ""}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input className="ki" placeholder="Rechercher..." style={{ width: 140, padding: "6px 10px", fontSize: 13 }} value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
-            <select className="ks" value={filter.category} onChange={e => setFilter(f => ({ ...f, category: e.target.value }))}>
-              <option value="all">Toutes catégories</option>
-              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
-            </select>
-            <select className="ks" value={filter.owner} onChange={e => setFilter(f => ({ ...f, owner: e.target.value }))}>
-              <option value="all">Tous propriétaires</option>
-              {allOwners.map(id => <option key={id} value={id}>👑 {getParticipant(id)?.name}</option>)}
-            </select>
-            <select className="ks" value={filter.assignee} onChange={e => setFilter(f => ({ ...f, assignee: e.target.value }))}>
-              <option value="all">Tous participants</option>
-              {PARTICIPANTS.map(p => <option key={p.id} value={p.id}>👥 {p.name}</option>)}
-            </select>
+            {/* View toggle */}
+            <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 8, padding: 2 }}>
+              <button
+                className="bt"
+                onClick={() => setView('kanban')}
+                style={{ fontSize: 12, borderRadius: 6, border: "none", padding: "5px 12px", background: view === 'kanban' ? "var(--color-background-primary)" : "transparent", boxShadow: view === 'kanban' ? "0 1px 3px rgba(0,0,0,0.1)" : "none", fontWeight: view === 'kanban' ? 600 : 400 }}
+              >Kanban</button>
+              <button
+                className="bt"
+                onClick={() => setView('budget')}
+                style={{ fontSize: 12, borderRadius: 6, border: "none", padding: "5px 12px", background: view === 'budget' ? "var(--color-background-primary)" : "transparent", boxShadow: view === 'budget' ? "0 1px 3px rgba(0,0,0,0.1)" : "none", fontWeight: view === 'budget' ? 600 : 400 }}
+              >Budget</button>
+            </div>
+            {view === 'kanban' && (
+              <>
+                <input className="ki" placeholder="Rechercher..." style={{ width: 140, padding: "6px 10px", fontSize: 13 }} value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
+                <select className="ks" value={filter.category} onChange={e => setFilter(f => ({ ...f, category: e.target.value }))}>
+                  <option value="all">Toutes catégories</option>
+                  {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                </select>
+                <select className="ks" value={filter.owner} onChange={e => setFilter(f => ({ ...f, owner: e.target.value }))}>
+                  <option value="all">Tous propriétaires</option>
+                  {allOwners.map(id => <option key={id} value={id}>👑 {getParticipant(id)?.name}</option>)}
+                </select>
+                <select className="ks" value={filter.assignee} onChange={e => setFilter(f => ({ ...f, assignee: e.target.value }))}>
+                  <option value="all">Tous participants</option>
+                  {PARTICIPANTS.map(p => <option key={p.id} value={p.id}>👥 {p.name}</option>)}
+                </select>
+              </>
+            )}
             <button className="bt" onClick={signOut} style={{ fontSize: 12 }}>Déconnexion</button>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-          {COLUMNS.map(col => {
-            const n = cards.filter(c => c.column === col.id).length;
-            const p = st.total ? (n / st.total * 100) : 0;
-            return (
-              <div key={col.id} style={{ flex: 1, minWidth: 120 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>
-                  <span>{col.title}</span><span style={{ fontWeight: 600 }}>{n}</span>
-                </div>
-                <div className="pg"><div className="pb" style={{ width: p + "%", background: col.color }} /></div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
-        <DragDropContext onDragEnd={handleDragEnd}>
-          {COLUMNS.map(col => {
-            // Steps 5 + 7: sort by position first, then priority, then created_at as tiebreaker
-            const cc = fc.filter(c => c.column === col.id).sort((a, b) => {
-              const posDiff = (a.position ?? 999999) - (b.position ?? 999999);
-              if (posDiff !== 0) return posDiff;
-              const p = { high: 0, medium: 1, low: 2 };
-              const priDiff = (p[a.priority] || 1) - (p[b.priority] || 1);
-              if (priDiff !== 0) return priDiff;
-              return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-            });
-            return (
-              <Droppable key={col.id} droppableId={col.id}>
-                {(provided, snapshot) => (
-                  <div ref={provided.innerRef} {...provided.droppableProps} style={{ minWidth: 280, flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} />
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{col.title}</span>
-                        <span style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "1px 8px", borderRadius: 10 }}>{cc.length}</span>
-                      </div>
-                      <button onClick={() => add(col.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)", lineHeight: 1 }}>+</button>
-                    </div>
-                    <div style={{ minHeight: 80, borderRadius: 10, padding: 2, ...(snapshot.isDraggingOver ? { border: "2px dashed #378ADD", background: "rgba(55,138,221,0.05)" } : {}) }}>
-                      {cc.map((card, index) => (
-                        <Draggable key={card.id} draggableId={card.id} index={index}>
-                          {(provided, snapshot) => {
-                            const ct2 = cat(card.category);
-                            return (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className={`kc${snapshot.isDragging ? " dr" : ""}`}
-                                onClick={() => setEditCard(card.id)}
-                                style={{ ...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.6 : 1 }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-                                  <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}>
-                                    <span style={{ fontSize: 12 }}>{ct2.icon}</span> {ct2.label}
-                                  </div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                    {card.owner && <div className="kb" style={{ background: "var(--color-background-secondary)", border: ".5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>👑 {getParticipant(card.owner).name}</div>}
-                                    {card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}
-                                    {card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}
-                                  </div>
-                                </div>
-                                <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
-                                {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <div style={{ display: "flex" }}>
-                                    {(card.assignees || []).slice(0, 4).map(aid => {
-                                      const p = getParticipant(aid);
-                                      return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null;
-                                    })}
-                                  </div>
-                                  {(card.docs || []).length > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>📎 {card.docs.length}</span>}
-                                </div>
-                              </div>
-                            );
-                          }}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
+        {view === 'kanban' && (
+          <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+            {COLUMNS.map(col => {
+              const n = cards.filter(c => c.column === col.id).length;
+              const p = st.total ? (n / st.total * 100) : 0;
+              return (
+                <div key={col.id} style={{ flex: 1, minWidth: 120 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>
+                    <span>{col.title}</span><span style={{ fontWeight: 600 }}>{n}</span>
                   </div>
-                )}
-              </Droppable>
-            );
-          })}
-        </DragDropContext>
+                  <div className="pg"><div className="pb" style={{ width: p + "%", background: col.color }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
+      {/* Main content: Kanban or Budget view */}
+      {view === 'kanban' ? (
+        <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
+          <DragDropContext onDragEnd={handleDragEnd}>
+            {COLUMNS.map(col => {
+              const cc = fc.filter(c => c.column === col.id).sort((a, b) => {
+                const posDiff = (a.position ?? 999999) - (b.position ?? 999999);
+                if (posDiff !== 0) return posDiff;
+                const p = { high: 0, medium: 1, low: 2 };
+                const priDiff = (p[a.priority] || 1) - (p[b.priority] || 1);
+                if (priDiff !== 0) return priDiff;
+                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+              });
+              return (
+                <Droppable key={col.id} droppableId={col.id}>
+                  {(provided, snapshot) => (
+                    <div ref={provided.innerRef} {...provided.droppableProps} style={{ minWidth: 280, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} />
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{col.title}</span>
+                          <span style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "1px 8px", borderRadius: 10 }}>{cc.length}</span>
+                        </div>
+                        <button onClick={() => add(col.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)", lineHeight: 1 }}>+</button>
+                      </div>
+                      <div style={{ minHeight: 80, borderRadius: 10, padding: 2, ...(snapshot.isDraggingOver ? { border: "2px dashed #378ADD", background: "rgba(55,138,221,0.05)" } : {}) }}>
+                        {cc.map((card, index) => (
+                          <Draggable key={card.id} draggableId={card.id} index={index}>
+                            {(provided, snapshot) => {
+                              const ct2 = cat(card.category);
+                              return (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={`kc${snapshot.isDragging ? " dr" : ""}`}
+                                  onClick={() => setEditCard(card.id)}
+                                  style={{ ...provided.draggableProps.style, opacity: snapshot.isDragging ? 0.6 : 1 }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                                    <div className="kb" style={{ background: ct2.color + "18", color: ct2.color }}>
+                                      <span style={{ fontSize: 12 }}>{ct2.icon}</span> {ct2.label}
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                      {card.owner && <div className="kb" style={{ background: "var(--color-background-secondary)", border: ".5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>👑 {getParticipant(card.owner).name}</div>}
+                                      {card.priority === "high" && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E24B4A" }} />}
+                                      {card.day && <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontWeight: 500 }}>{formatDay(card.day)}</span>}
+                                    </div>
+                                  </div>
+                                  <p style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4, lineHeight: 1.3 }}>{card.title || "Sans titre"}</p>
+                                  {card.desc && <p style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4, marginBottom: 8 }}>{card.desc.length > 100 ? card.desc.slice(0, 100) + "..." : card.desc}</p>}
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <div style={{ display: "flex" }}>
+                                      {(card.assignees || []).slice(0, 4).map(aid => {
+                                        const p = getParticipant(aid);
+                                        return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid var(--color-background-primary)" }} title={p.name}>{p.initials}</div> : null;
+                                      })}
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      {card.cost > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: "#378ADD", background: "#378ADD15", padding: "1px 6px", borderRadius: 4 }}>{formatEur(card.cost)}</span>}
+                                      {(card.docs || []).length > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>📎 {card.docs.length}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    </div>
+                  )}
+                </Droppable>
+              );
+            })}
+          </DragDropContext>
+        </div>
+      ) : (
+        <BudgetView cards={cards} onEditCard={setEditCard} />
+      )}
+
+      {/* Edit card modal */}
       {editCard && (() => {
         const card = cards.find(c => c.id === editCard);
         if (!card) return null;
@@ -539,12 +750,10 @@ function App() {
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Titre</label>
-                  {/* Step 1: upText() debounces DB write */}
                   <input className="ki" value={card.title} onChange={e => upText(card.id, { title: e.target.value })} placeholder="Titre..." autoFocus />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Description</label>
-                  {/* Step 1: upText() debounces DB write */}
                   <textarea className="ki" rows={3} value={card.desc} onChange={e => upText(card.id, { desc: e.target.value })} placeholder="Détails, notes, liens..." style={{ resize: "vertical" }} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -575,6 +784,77 @@ function App() {
                     </select>
                   </div>
                 </div>
+
+                {/* Cost tracking section */}
+                <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 10, display: "block", textTransform: "uppercase" }}>💰 Coût & partage</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Montant</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          className="ki"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0,00"
+                          value={card.cost ?? ""}
+                          onChange={e => up(card.id, { cost: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-secondary)" }}>€</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Payé par</label>
+                      <select className="ks" style={{ width: "100%" }} value={card.paid_by || ""} onChange={e => up(card.id, { paid_by: e.target.value || null })}>
+                        <option value="">Sélectionner...</option>
+                        {PARTICIPANTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        {card.paid_by && !PARTICIPANTS.find(p => p.id === card.paid_by) && <option value={card.paid_by}>{card.paid_by}</option>}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)" }}>Partagé entre</label>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {(card.assignees || []).length > 0 && (
+                          <button className="bt" onClick={() => up(card.id, { split_among: [...card.assignees] })} style={{ fontSize: 11, padding: "2px 8px" }}>= Participants</button>
+                        )}
+                        <button className="bt" onClick={() => up(card.id, { split_among: PARTICIPANTS.map(p => p.id) })} style={{ fontSize: 11, padding: "2px 8px" }}>Tous</button>
+                        {(card.split_among || []).length > 0 && (
+                          <button className="bt" onClick={() => up(card.id, { split_among: [] })} style={{ fontSize: 11, padding: "2px 8px" }}>Aucun</button>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {PARTICIPANTS.map(p => {
+                        const a = (card.split_among || []).includes(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className="ct"
+                            onClick={() => {
+                              const n = a ? (card.split_among || []).filter(x => x !== p.id) : [...(card.split_among || []), p.id];
+                              up(card.id, { split_among: n });
+                            }}
+                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 16, border: a ? `2px solid ${p.color}` : "1px solid var(--color-border-tertiary)", background: a ? p.color + "15" : "transparent", fontSize: 12 }}
+                          >
+                            <div className="ka" style={{ width: 18, height: 18, fontSize: 7, background: a ? p.color : "var(--color-background-tertiary)" }}>{p.initials}</div>
+                            <span style={{ color: a ? p.color : "var(--color-text-secondary)", fontWeight: a ? 600 : 400 }}>{p.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {card.cost > 0 && (card.split_among || []).length > 0 && (
+                      <p style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 6 }}>
+                        → {formatEur(card.cost / card.split_among.length)} par personne
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Owner & participants section */}
                 <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200, background: "var(--color-background-secondary)", padding: 12, borderRadius: 8 }}>
@@ -585,7 +865,6 @@ function App() {
                           {PARTICIPANTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                           {card.owner && !PARTICIPANTS.find(p => p.id === card.owner) && <option value={card.owner}>{card.owner}</option>}
                         </select>
-                        {/* Step 3: inline input replaces prompt() for custom owner */}
                         {inlineInput.type === 'owner' && inlineInput.cardId === card.id ? (
                           <div style={{ display: "flex", gap: 4 }}>
                             <input
@@ -651,7 +930,6 @@ function App() {
                             </div>
                           );
                         })}
-                        {/* Step 3: inline input replaces prompt() for custom participant */}
                         {inlineInput.type === 'participant' && inlineInput.cardId === card.id ? (
                           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                             <input
