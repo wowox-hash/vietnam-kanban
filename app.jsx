@@ -36,16 +36,17 @@ const ALLOWED_UPLOAD_TYPES = ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx"
 const MAX_FILE_SIZE_MB = 10;
 
 const VIETNAM_LOCATIONS = [
-  { label: "Hanoï", lat: 21.0285, lng: 105.8542 },
   { label: "Hô Chi Minh-Ville", lat: 10.8231, lng: 106.6297 },
   { label: "Đà Nẵng", lat: 16.0544, lng: 108.2022 },
   { label: "Hội An", lat: 15.8801, lng: 108.3380 },
-  { label: "Baie d'Ha Long", lat: 20.9101, lng: 107.1839 },
+  { label: "Cham Island", lat: 15.9470, lng: 108.5157 },
   { label: "Nha Trang", lat: 12.2388, lng: 109.1967 },
   { label: "Phú Quốc", lat: 10.2270, lng: 103.9677 },
-  { label: "Sapa", lat: 22.3364, lng: 103.8440 },
+  { label: "Cần Thơ", lat: 10.0452, lng: 105.7469 },
+  { label: "Thới Bình", lat: 9.2700, lng: 105.1200 },
   { label: "Huế", lat: 16.4637, lng: 107.5909 },
   { label: "Đà Lạt", lat: 11.9404, lng: 108.4583 },
+  { label: "Sapa", lat: 22.3364, lng: 103.8440 },
 ];
 
 const CATEGORY_ORDER = { transport: 0, hotel: 1, excursion: 2, restaurant: 3, admin: 4, other: 5 };
