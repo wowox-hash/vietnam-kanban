@@ -35,6 +35,28 @@ const PARTICIPANTS = [
 const ALLOWED_UPLOAD_TYPES = ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx", "xls", "xlsx", "txt", "zip"];
 const MAX_FILE_SIZE_MB = 10;
 
+const VIETNAM_LOCATIONS = [
+  { label: "Hanoï", lat: 21.0285, lng: 105.8542 },
+  { label: "Hô Chi Minh-Ville", lat: 10.8231, lng: 106.6297 },
+  { label: "Đà Nẵng", lat: 16.0544, lng: 108.2022 },
+  { label: "Hội An", lat: 15.8801, lng: 108.3380 },
+  { label: "Baie d'Ha Long", lat: 20.9101, lng: 107.1839 },
+  { label: "Nha Trang", lat: 12.2388, lng: 109.1967 },
+  { label: "Phú Quốc", lat: 10.2270, lng: 103.9677 },
+  { label: "Sapa", lat: 22.3364, lng: 103.8440 },
+  { label: "Huế", lat: 16.4637, lng: 107.5909 },
+  { label: "Đà Lạt", lat: 11.9404, lng: 108.4583 },
+];
+
+const CATEGORY_ORDER = { transport: 0, hotel: 1, excursion: 2, restaurant: 3, admin: 4, other: 5 };
+
+const FIELD_LABELS = {
+  title: "Titre", desc: "Description", column: "Statut", category: "Catégorie",
+  day: "Dates", priority: "Priorité", owner: "Propriétaire", cost: "Coût",
+  paid_by: "Payé par", split_among: "Partagé entre", assignees: "Participants",
+  location: "Emplacement"
+};
+
 function uid() { return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 function formatDay(str) {
@@ -51,6 +73,30 @@ function formatDay(str) {
     return `${parseFr(start)} - ${parseFr(end)}`;
   }
   return parseFr(str);
+}
+
+function parseDayToDate(str) {
+  if (!str || !str.match(/\d{2}\/\d{2}\/\d{4}/)) return null;
+  const part = str.includes(" au ") ? str.split(" au ")[0] : str;
+  const [d, m, y] = part.split('/').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function parseDayKey(str) {
+  const dt = parseDayToDate(str);
+  if (!dt) return null;
+  return dt.toISOString().slice(0, 10);
+}
+
+function formatDayLong(dateKey) {
+  const dt = new Date(dateKey + "T12:00:00");
+  return dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + " " + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatEur(n) {
@@ -307,6 +353,377 @@ function BudgetView({ cards, onEditCard }) {
   );
 }
 
+// --- Itinerary View ---
+function ItineraryView({ cards, onEditCard }) {
+  const groups = {};
+  const unscheduled = [];
+  cards.forEach(card => {
+    const key = parseDayKey(card.day);
+    if (key) {
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(card);
+    } else {
+      unscheduled.push(card);
+    }
+  });
+  const sortedKeys = Object.keys(groups).sort();
+  const catSort = (a, b) => (CATEGORY_ORDER[a.category] ?? 5) - (CATEGORY_ORDER[b.category] ?? 5);
+  sortedKeys.forEach(k => groups[k].sort(catSort));
+  unscheduled.sort(catSort);
+
+  const sectionStyle = { background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 20, marginBottom: 16 };
+  const cat = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[5];
+  const col = id => COLUMNS.find(c => c.id === id) || COLUMNS[0];
+
+  const renderCard = (card) => {
+    const ct2 = cat(card.category);
+    const cl = col(card.column);
+    return (
+      <div key={card.id} onClick={() => onEditCard(card.id)} style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+        background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)",
+        borderRadius: 10, marginBottom: 8, cursor: "pointer", position: "relative",
+        borderLeft: `3px solid ${ct2.color}`, transition: "all .15s"
+      }}>
+        <div style={{ position: "absolute", left: -23, top: "50%", transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%", background: ct2.color, border: "2px solid var(--color-background-primary)" }} />
+        <span style={{ fontSize: 20, width: 32, textAlign: "center" }}>{ct2.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{card.title || "Sans titre"}</div>
+          {card.day && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{formatDay(card.day)}</div>}
+        </div>
+        <div style={{ display: "flex" }}>
+          {(card.assignees || []).slice(0, 3).map(aid => {
+            const p = getParticipant(aid);
+            return p ? <div key={aid} className="ka" style={{ background: p.color, marginRight: -4, border: "2px solid #fff", width: 22, height: 22, fontSize: 8 }}>{p.initials}</div> : null;
+          })}
+        </div>
+        <div className="kb" style={{ background: cl.color + "18", color: cl.color, fontSize: 10 }}>{cl.title}</div>
+        {card.cost > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: "#378ADD" }}>{formatEur(card.cost)}</span>}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: "20px 16px", maxWidth: 800, margin: "0 auto" }}>
+      {sortedKeys.length === 0 && unscheduled.length === 0 && (
+        <div style={{ ...sectionStyle, textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>Aucune activité planifiée.</p>
+        </div>
+      )}
+      {sortedKeys.map(dayKey => (
+        <div key={dayKey} style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#378ADD", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+              {new Date(dayKey + "T12:00:00").getDate()}
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text-primary)", textTransform: "capitalize" }}>{formatDayLong(dayKey)}</div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{groups[dayKey].length} activité{groups[dayKey].length > 1 ? "s" : ""}</div>
+            </div>
+          </div>
+          <div style={{ borderLeft: "2px solid var(--color-border-tertiary)", marginLeft: 19, paddingLeft: 20 }}>
+            {groups[dayKey].map(renderCard)}
+          </div>
+        </div>
+      ))}
+      {unscheduled.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--color-background-tertiary)", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, flexShrink: 0 }}>?</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text-primary)" }}>Non planifié</div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{unscheduled.length} activité{unscheduled.length > 1 ? "s" : ""}</div>
+            </div>
+          </div>
+          <div style={{ borderLeft: "2px dashed var(--color-border-tertiary)", marginLeft: 19, paddingLeft: 20 }}>
+            {unscheduled.map(renderCard)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Location Picker (mini map for edit modal) ---
+function LocationPicker({ location, onChange }) {
+  const miniMapRef = useRef(null);
+  const miniMapInstance = useRef(null);
+
+  useEffect(() => {
+    if (!miniMapRef.current || typeof L === 'undefined') return;
+    if (miniMapInstance.current) { miniMapInstance.current.remove(); miniMapInstance.current = null; }
+    const center = location ? [location.lat, location.lng] : [16.0, 107.0];
+    const zoom = location ? 10 : 6;
+    const map = L.map(miniMapRef.current, { scrollWheelZoom: true }).setView(center, zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(map);
+    if (location) L.marker([location.lat, location.lng]).addTo(map);
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      let label = "Position personnalisée";
+      for (const loc of VIETNAM_LOCATIONS) {
+        if (Math.sqrt(Math.pow(lat - loc.lat, 2) + Math.pow(lng - loc.lng, 2)) < 0.15) { label = loc.label; break; }
+      }
+      onChange({ lat: Math.round(lat * 10000) / 10000, lng: Math.round(lng * 10000) / 10000, label });
+    });
+    miniMapInstance.current = map;
+    setTimeout(() => map.invalidateSize(), 200);
+    return () => { map.remove(); miniMapInstance.current = null; };
+  }, [location?.lat, location?.lng]);
+
+  return <div ref={miniMapRef} style={{ height: 180, borderRadius: 8, border: ".5px solid var(--color-border-tertiary)", marginTop: 8 }} />;
+}
+
+// --- Map View ---
+function MapView({ cards, onEditCard }) {
+  const mapRef = useRef(null);
+  const mapInstance = useRef(null);
+  const markersRef = useRef([]);
+
+  const geoCards = cards.filter(c => c.location && c.location.lat && c.location.lng);
+
+  useEffect(() => {
+    if (!mapRef.current || typeof L === 'undefined') return;
+    if (!mapInstance.current) {
+      const map = L.map(mapRef.current).setView([16.0, 107.0], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+      mapInstance.current = map;
+    }
+    return () => { if (mapInstance.current) { mapInstance.current.remove(); mapInstance.current = null; } };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstance.current) return;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    geoCards.forEach(card => {
+      const ct2 = CATEGORIES.find(c => c.id === card.category) || CATEGORIES[5];
+      const cl = COLUMNS.find(c => c.id === card.column) || COLUMNS[0];
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:${ct2.color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${ct2.icon}</div>`,
+        iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -18]
+      });
+      const marker = L.marker([card.location.lat, card.location.lng], { icon }).addTo(mapInstance.current);
+      marker.bindPopup(`
+        <div style="min-width:180px;font-family:system-ui,sans-serif">
+          <div style="font-size:11px;color:${ct2.color};font-weight:600;margin-bottom:4px">${ct2.icon} ${ct2.label}</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">${card.title || "Sans titre"}</div>
+          ${card.day ? `<div style="font-size:12px;color:#666;margin-bottom:4px">${formatDay(card.day)}</div>` : ''}
+          ${card.cost > 0 ? `<div style="font-size:12px;color:#378ADD;font-weight:600;margin-bottom:4px">${formatEur(card.cost)}</div>` : ''}
+          <div style="font-size:11px;padding:2px 6px;border-radius:4px;background:${cl.color}18;color:${cl.color};display:inline-block">${cl.title}</div>
+          <div style="margin-top:8px"><a href="#" class="map-edit-link" data-card-id="${card.id}" style="font-size:12px;color:#378ADD;text-decoration:underline;cursor:pointer">Modifier →</a></div>
+        </div>
+      `);
+      markersRef.current.push(marker);
+    });
+    if (geoCards.length > 0) {
+      mapInstance.current.fitBounds(L.latLngBounds(geoCards.map(c => [c.location.lat, c.location.lng])), { padding: [50, 50], maxZoom: 12 });
+    }
+  }, [cards]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.classList && e.target.classList.contains('map-edit-link')) {
+        e.preventDefault();
+        const cardId = e.target.getAttribute('data-card-id');
+        if (cardId) onEditCard(cardId);
+      }
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [onEditCard]);
+
+  return (
+    <div style={{ padding: "16px 12px", height: "calc(100vh - 120px)", position: "relative" }}>
+      <div ref={mapRef} style={{ height: "100%", borderRadius: 12, border: ".5px solid var(--color-border-tertiary)" }} />
+      {geoCards.length === 0 && (
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "var(--color-background-primary)", padding: 20, borderRadius: 12, textAlign: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 500 }}>
+          <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Aucune carte avec emplacement</p>
+          <p style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Ajoutez des emplacements via l'édition des cartes</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Activity View ---
+function ActivityView({ activities, cards, onEditCard }) {
+  const grouped = {};
+  activities.forEach(a => {
+    const dayKey = new Date(a.created_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (!grouped[dayKey]) grouped[dayKey] = [];
+    grouped[dayKey].push(a);
+  });
+
+  const formatAction = (a) => {
+    const card = cards.find(c => c.id === a.card_id);
+    const cardTitle = card ? card.title || "Sans titre" : a.details?.card_title || "carte supprimée";
+    const fieldLabel = FIELD_LABELS[a.details?.field] || a.details?.field;
+    switch (a.action) {
+      case 'card_created': return `a créé "${cardTitle}"`;
+      case 'card_deleted': return `a supprimé "${cardTitle}"`;
+      case 'card_moved': return `a déplacé "${cardTitle}" vers ${a.details?.to || "?"}`;
+      case 'field_changed': return `a modifié ${fieldLabel} de "${cardTitle}"`;
+      case 'comment_added': return `a commenté sur "${cardTitle}"`;
+      case 'doc_uploaded': return `a ajouté un document à "${cardTitle}"`;
+      case 'doc_deleted': return `a supprimé un document de "${cardTitle}"`;
+      default: return `${a.action} sur "${cardTitle}"`;
+    }
+  };
+
+  const sectionStyle = { background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 20, marginBottom: 16 };
+
+  return (
+    <div style={{ padding: "20px 16px", maxWidth: 800, margin: "0 auto" }}>
+      {activities.length === 0 && (
+        <div style={{ ...sectionStyle, textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>Aucune activité enregistrée.</p>
+        </div>
+      )}
+      {Object.entries(grouped).map(([dayLabel, items]) => (
+        <div key={dayLabel} style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "capitalize", marginBottom: 8 }}>{dayLabel}</div>
+          {items.map(a => {
+            const p = getParticipant(a.user_name);
+            return (
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", marginBottom: 4, borderRadius: 8, background: "var(--color-background-primary)", border: ".5px solid var(--color-border-tertiary)", cursor: a.card_id ? "pointer" : "default" }} onClick={() => a.card_id && cards.find(c => c.id === a.card_id) && onEditCard(a.card_id)}>
+                {p && <div className="ka" style={{ background: p.color, width: 28, height: 28, fontSize: 10, flexShrink: 0 }}>{p.initials}</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+                    <strong>{a.user_name}</strong> {formatAction(a)}
+                  </div>
+                  {a.details?.old_value !== undefined && a.details?.new_value !== undefined && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                      <span style={{ textDecoration: "line-through" }}>{String(a.details.old_value).slice(0, 50)}</span> → <span>{String(a.details.new_value).slice(0, 50)}</span>
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: 11, color: "var(--color-text-secondary)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatTimestamp(a.created_at)}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Card Comments ---
+function CardComments({ cardId, userName, session }) {
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+
+  useEffect(() => {
+    if (!cardId) return;
+    supabase.from('comments').select('*').eq('card_id', cardId).order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setComments(data); });
+    const channel = supabase.channel('comments-' + cardId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments', filter: `card_id=eq.${cardId}` }, payload => {
+        setComments(cs => cs.find(c => c.id === payload.new.id) ? cs : [...cs, payload.new]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [cardId]);
+
+  const send = async () => {
+    const text = newComment.trim();
+    if (!text) return;
+    setNewComment('');
+    await supabase.from('comments').insert([{ card_id: cardId, user_id: session?.user?.id, user_name: userName, content: text }]);
+    // Log activity
+    await supabase.from('activity_log').insert([{ card_id: cardId, user_id: session?.user?.id, user_name: userName, action: 'comment_added', details: { comment: text.slice(0, 100) } }]);
+  };
+
+  return (
+    <div>
+      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 8, display: "block", textTransform: "uppercase" }}>💬 Commentaires</label>
+      <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 8 }}>
+        {comments.length === 0 && <p style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Aucun commentaire.</p>}
+        {comments.map(c => {
+          const p = getParticipant(c.user_name);
+          return (
+            <div key={c.id} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+              {p && <div className="ka" style={{ background: p.color, width: 24, height: 24, fontSize: 8, flexShrink: 0 }}>{p.initials}</div>}
+              <div style={{ flex: 1, background: "var(--color-background-secondary)", borderRadius: 8, padding: "6px 10px" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 2 }}>
+                  {c.user_name} <span style={{ fontWeight: 400 }}>• {formatTimestamp(c.created_at)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--color-text-primary)", lineHeight: 1.4 }}>{c.content}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input className="ki" value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Écrire un commentaire..." style={{ fontSize: 13, padding: "6px 10px" }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
+        <button className="bt bp" onClick={send} style={{ padding: "6px 12px", fontSize: 13 }}>Envoyer</button>
+      </div>
+    </div>
+  );
+}
+
+// --- Chat View ---
+function ChatView({ userName, session }) {
+  const [messages, setMessages] = useState([]);
+  const [newMsg, setNewMsg] = useState('');
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    supabase.from('chat_messages').select('*').order('created_at', { ascending: true }).limit(200)
+      .then(({ data }) => { if (data) setMessages(data); });
+    const channel = supabase.channel('chat-global')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
+        setMessages(ms => ms.find(m => m.id === payload.new.id) ? ms : [...ms, payload.new]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const send = async () => {
+    const text = newMsg.trim();
+    if (!text) return;
+    setNewMsg('');
+    await supabase.from('chat_messages').insert([{ user_id: session?.user?.id, user_name: userName, content: text }]);
+  };
+
+  const isOwn = (msg) => msg.user_id === session?.user?.id;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", maxWidth: 700, margin: "0 auto", padding: "16px 12px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
+        {messages.length === 0 && <p style={{ textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13, padding: 20 }}>Aucun message. Lancez la conversation !</p>}
+        {messages.map(msg => {
+          const own = isOwn(msg);
+          const p = getParticipant(msg.user_name);
+          return (
+            <div key={msg.id} style={{ display: "flex", justifyContent: own ? "flex-end" : "flex-start", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", maxWidth: "75%", flexDirection: own ? "row-reverse" : "row" }}>
+                {p && <div className="ka" style={{ background: p.color, width: 28, height: 28, fontSize: 9, flexShrink: 0 }}>{p.initials}</div>}
+                <div style={{ background: own ? "#378ADD" : "var(--color-background-secondary)", color: own ? "#fff" : "var(--color-text-primary)", borderRadius: 12, padding: "8px 12px", maxWidth: "100%" }}>
+                  {!own && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2, color: p?.color || "var(--color-text-secondary)" }}>{msg.user_name}</div>}
+                  <div style={{ fontSize: 14, lineHeight: 1.4, wordBreak: "break-word" }}>{msg.content}</div>
+                  <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: own ? "right" : "left" }}>{formatTimestamp(msg.created_at)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={chatEndRef} />
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: "12px 0", borderTop: ".5px solid var(--color-border-tertiary)" }}>
+        <input className="ki" value={newMsg} onChange={e => setNewMsg(e.target.value)} placeholder="Écrire un message..."
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} style={{ flex: 1 }} />
+        <button className="bt bp" onClick={send} style={{ padding: "8px 16px" }}>Envoyer</button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [cards, setCards] = useState([]);
@@ -327,6 +744,9 @@ function App() {
   const [confirm, setConfirm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [inlineInput, setInlineInput] = useState({ type: null, value: '', cardId: null });
+  const [userName, setUserName] = useState(null);
+  const [nameInput, setNameInput] = useState('');
+  const [activities, setActivities] = useState([]);
   const fileRef = useRef(null);
   const debounceTimers = useRef({});
   const pendingCardIds = useRef(new Set());
@@ -359,9 +779,19 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Load display name from session metadata
+  useEffect(() => {
+    if (session?.user?.user_metadata?.display_name) {
+      setUserName(session.user.user_metadata.display_name);
+    } else if (session) {
+      setUserName(null);
+    }
+  }, [session]);
+
   useEffect(() => {
     if (!session) return;
     fetchCards();
+    fetchActivities();
     const channel = supabase
       .channel('public:cards')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cards' }, payload => {
@@ -374,13 +804,38 @@ function App() {
         }
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const actChannel = supabase.channel('public:activity_log')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' }, payload => {
+        setActivities(as => [payload.new, ...as]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); supabase.removeChannel(actChannel); };
   }, [session]);
 
   const fetchCards = async () => {
     const { data, error } = await supabase.from('cards').select('*');
     if (error) console.error(error);
     else { setCards(data); setLoaded(true); }
+  };
+
+  const fetchActivities = async () => {
+    const { data, error } = await supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(200);
+    if (error) console.error(error);
+    else setActivities(data || []);
+  };
+
+  const logActivity = async (cardId, action, details = {}) => {
+    if (!userName) return;
+    await supabase.from('activity_log').insert([{
+      card_id: cardId, user_id: session?.user?.id, user_name: userName, action, details
+    }]);
+  };
+
+  const saveDisplayName = async (name) => {
+    const { error } = await supabase.auth.updateUser({ data: { display_name: name } });
+    if (error) { notify("Erreur lors de l'enregistrement du nom.", "error"); return; }
+    setUserName(name);
+    notify("Bienvenue, " + name + " !", "success");
   };
 
   const signIn = async (e) => {
@@ -408,11 +863,27 @@ function App() {
   };
 
   const up = async (id, u) => {
+    const oldCard = cards.find(c => c.id === id);
     setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
     if (pendingCardIds.current.has(id)) return;
     setSaving(true);
     const { error } = await supabase.from('cards').update(u).eq('id', id);
     if (error) { console.error(error); fetchCards(); notify("Erreur lors de la sauvegarde.", "error"); }
+    else if (oldCard) {
+      for (const key of Object.keys(u)) {
+        if (key === 'position') continue;
+        const oldVal = oldCard[key];
+        const newVal = u[key];
+        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+          if (key === 'column') {
+            const colName = COLUMNS.find(c => c.id === newVal)?.title || newVal;
+            logActivity(id, 'card_moved', { field: key, old_value: oldVal, new_value: newVal, to: colName, card_title: oldCard.title });
+          } else {
+            logActivity(id, 'field_changed', { field: key, old_value: typeof oldVal === 'object' ? JSON.stringify(oldVal) : oldVal, new_value: typeof newVal === 'object' ? JSON.stringify(newVal) : newVal, card_title: oldCard.title });
+          }
+        }
+      }
+    }
     setSaving(false);
   };
 
@@ -430,7 +901,7 @@ function App() {
   };
 
   const add = (col) => {
-    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium", position: null, cost: null, paid_by: null, split_among: [] };
+    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium", position: null, cost: null, paid_by: null, split_among: [], location: null };
     pendingCardIds.current.add(nc.id);
     setCards(cs => [...cs, nc]);
     setEditCard(nc.id);
@@ -450,6 +921,7 @@ function App() {
       }
       supabase.from('cards').insert([card]).then(({ error }) => {
         if (error) { console.error(error); setCards(cs => cs.filter(c => c.id !== id)); notify("Erreur lors de la création.", "error"); }
+        else logActivity(id, 'card_created', { card_title: card.title });
       });
     }
   };
@@ -471,6 +943,7 @@ function App() {
       }
       setCards(cs => cs.filter(c => c.id !== id));
       setEditCard(null);
+      logActivity(id, 'card_deleted', { card_title: card?.title || "Sans titre" });
       const { error } = await supabase.from('cards').delete().eq('id', id);
       if (error) { console.error(error); fetchCards(); }
     });
@@ -492,7 +965,10 @@ function App() {
       const { data } = supabase.storage.from('kanban_docs').getPublicUrl(filePath);
       nd.push({ name: f.name, type: ext, size: (f.size / 1024).toFixed(0) + " KB", addedAt: new Date().toLocaleDateString("fr-FR"), path: filePath, url: data.publicUrl });
     }
-    if (nd.length) up(cid, { docs: [...(card.docs || []), ...nd] });
+    if (nd.length) {
+      up(cid, { docs: [...(card.docs || []), ...nd] });
+      nd.forEach(d => logActivity(cid, 'doc_uploaded', { card_title: card.title, file_name: d.name }));
+    }
   };
 
   const rd = (cid, i) => {
@@ -541,6 +1017,35 @@ function App() {
             }
           }} style={{ background: "none", border: "none", color: "#378ADD", fontSize: 13, textDecoration: "underline", cursor: "pointer", width: "100%", marginTop: 12 }}>Mot de passe oublié ?</button>
         </form>
+        <Toast toast={toast} />
+      </div>
+    );
+  }
+
+  // Display name selection screen
+  if (session && !userName) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="mo" style={{ maxWidth: 440, width: "100%", padding: 32 }}>
+          <h1 style={{ fontSize: 24, marginBottom: 8, fontWeight: 700 }}>Qui êtes-vous ?</h1>
+          <p style={{ color: "var(--color-text-secondary)", marginBottom: 24, fontSize: 14 }}>Choisissez votre nom pour les commentaires et le chat.</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+            {PARTICIPANTS.map(p => (
+              <div key={p.id} className="ct" onClick={() => saveDisplayName(p.name)}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 12, border: "1px solid var(--color-border-tertiary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
+                <div className="ka" style={{ background: p.color }}>{p.initials}</div>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 16 }}>
+            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6, display: "block" }}>Ou entrez un autre nom :</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="ki" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Votre nom..." onKeyDown={e => { if (e.key === 'Enter' && nameInput.trim()) saveDisplayName(nameInput.trim()); }} />
+              <button className="bt bp" onClick={() => { if (nameInput.trim()) saveDisplayName(nameInput.trim()); }}>OK</button>
+            </div>
+          </div>
+        </div>
         <Toast toast={toast} />
       </div>
     );
@@ -606,16 +1111,18 @@ function App() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {/* View toggle */}
             <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 8, padding: 2 }}>
-              <button
-                className="bt"
-                onClick={() => setView('kanban')}
-                style={{ fontSize: 12, borderRadius: 6, border: "none", padding: "5px 12px", background: view === 'kanban' ? "var(--color-background-primary)" : "transparent", boxShadow: view === 'kanban' ? "0 1px 3px rgba(0,0,0,0.1)" : "none", fontWeight: view === 'kanban' ? 600 : 400 }}
-              >Kanban</button>
-              <button
-                className="bt"
-                onClick={() => setView('budget')}
-                style={{ fontSize: 12, borderRadius: 6, border: "none", padding: "5px 12px", background: view === 'budget' ? "var(--color-background-primary)" : "transparent", boxShadow: view === 'budget' ? "0 1px 3px rgba(0,0,0,0.1)" : "none", fontWeight: view === 'budget' ? 600 : 400 }}
-              >Budget</button>
+              {[
+                { id: 'kanban', label: 'Kanban', icon: '📋' },
+                { id: 'budget', label: 'Budget', icon: '💰' },
+                { id: 'itinerary', label: 'Planning', icon: '📅' },
+                { id: 'map', label: 'Carte', icon: '🗺' },
+                { id: 'activity', label: 'Activité', icon: '📜' },
+                { id: 'chat', label: 'Chat', icon: '💬' },
+              ].map(v => (
+                <button key={v.id} className="bt" onClick={() => setView(v.id)}
+                  style={{ fontSize: 12, borderRadius: 6, border: "none", padding: "5px 10px", background: view === v.id ? "var(--color-background-primary)" : "transparent", boxShadow: view === v.id ? "0 1px 3px rgba(0,0,0,0.1)" : "none", fontWeight: view === v.id ? 600 : 400 }}
+                >{v.icon} {v.label}</button>
+              ))}
             </div>
             {view === 'kanban' && (
               <>
@@ -655,8 +1162,8 @@ function App() {
         )}
       </div>
 
-      {/* Main content: Kanban or Budget view */}
-      {view === 'kanban' ? (
+      {/* Main content */}
+      {view === 'kanban' && (
         <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
           <DragDropContext onDragEnd={handleDragEnd}>
             {COLUMNS.map(col => {
@@ -732,9 +1239,12 @@ function App() {
             })}
           </DragDropContext>
         </div>
-      ) : (
-        <BudgetView cards={cards} onEditCard={setEditCard} />
       )}
+      {view === 'budget' && <BudgetView cards={cards} onEditCard={setEditCard} />}
+      {view === 'itinerary' && <ItineraryView cards={cards} onEditCard={setEditCard} />}
+      {view === 'map' && <MapView cards={cards} onEditCard={setEditCard} />}
+      {view === 'activity' && <ActivityView activities={activities} cards={cards} onEditCard={setEditCard} />}
+      {view === 'chat' && <ChatView userName={userName} session={session} />}
 
       {/* Edit card modal */}
       {editCard && (() => {
@@ -852,6 +1362,32 @@ function App() {
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* Location section */}
+                <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 10, display: "block", textTransform: "uppercase" }}>📍 Emplacement</label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {VIETNAM_LOCATIONS.map(loc => (
+                      <div key={loc.label} className="ct"
+                        onClick={() => up(card.id, { location: { lat: loc.lat, lng: loc.lng, label: loc.label } })}
+                        style={{ padding: "3px 8px", borderRadius: 16, fontSize: 12, border: card.location?.label === loc.label ? "2px solid #378ADD" : "1px solid var(--color-border-tertiary)", background: card.location?.label === loc.label ? "#378ADD15" : "transparent", color: card.location?.label === loc.label ? "#378ADD" : "var(--color-text-secondary)", fontWeight: card.location?.label === loc.label ? 600 : 400 }}>
+                        {loc.label}
+                      </div>
+                    ))}
+                    {card.location && (
+                      <div className="ct" onClick={() => up(card.id, { location: null })}
+                        style={{ padding: "3px 8px", borderRadius: 16, fontSize: 12, border: "1px solid var(--color-border-tertiary)", color: "#E24B4A" }}>
+                        ✕ Retirer
+                      </div>
+                    )}
+                  </div>
+                  {card.location && (
+                    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>
+                      📍 {card.location.label} ({card.location.lat.toFixed(4)}, {card.location.lng.toFixed(4)})
+                    </div>
+                  )}
+                  <LocationPicker location={card.location} onChange={(loc) => up(card.id, { location: loc })} />
                 </div>
 
                 {/* Owner & participants section */}
@@ -979,6 +1515,11 @@ function App() {
                   <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={e => fup(card.id, e)} />
                   <button className="bt" onClick={() => fileRef.current?.click()} style={{ width: "100%", marginTop: 4, fontSize: 13, color: "var(--color-text-secondary)" }}>+ Ajouter un document</button>
                 </div>
+                {/* Comments */}
+                <div style={{ borderTop: ".5px solid var(--color-border-tertiary)", paddingTop: 14, marginTop: 4 }}>
+                  <CardComments cardId={card.id} userName={userName} session={session} />
+                </div>
+
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 14, borderTop: ".5px solid var(--color-border-tertiary)" }}>
                   <button className="bt bd" onClick={() => del(card.id)} style={{ fontSize: 13 }}>Supprimer</button>
                   <button className="bt bp" onClick={closeModal} style={{ fontSize: 13 }}>Fermer</button>
