@@ -455,29 +455,94 @@ function ItineraryView({ cards, onEditCard }) {
 function LocationPicker({ location, onChange }) {
   const miniMapRef = useRef(null);
   const miniMapInstance = useRef(null);
+  const markerRef = useRef(null);
+  const [query, setQuery] = React.useState("");
+  const [results, setResults] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const debounceRef = useRef(null);
 
   useEffect(() => {
     if (!miniMapRef.current || typeof L === 'undefined') return;
-    if (miniMapInstance.current) { miniMapInstance.current.remove(); miniMapInstance.current = null; }
+    if (miniMapInstance.current) { miniMapInstance.current.remove(); miniMapInstance.current = null; markerRef.current = null; }
     const center = location ? [location.lat, location.lng] : [16.0, 107.0];
-    const zoom = location ? 10 : 6;
+    const zoom = location ? 13 : 6;
     const map = L.map(miniMapRef.current, { scrollWheelZoom: true }).setView(center, zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(map);
-    if (location) L.marker([location.lat, location.lng]).addTo(map);
+    if (location) markerRef.current = L.marker([location.lat, location.lng]).addTo(map);
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
       let label = "Position personnalisée";
       for (const loc of VIETNAM_LOCATIONS) {
         if (Math.sqrt(Math.pow(lat - loc.lat, 2) + Math.pow(lng - loc.lng, 2)) < 0.15) { label = loc.label; break; }
       }
-      onChange({ lat: Math.round(lat * 10000) / 10000, lng: Math.round(lng * 10000) / 10000, label });
+      const picked = { lat: Math.round(lat * 10000) / 10000, lng: Math.round(lng * 10000) / 10000, label };
+      if (markerRef.current) markerRef.current.setLatLng([picked.lat, picked.lng]);
+      else markerRef.current = L.marker([picked.lat, picked.lng]).addTo(map);
+      setQuery(label);
+      setResults([]);
+      onChange(picked);
     });
     miniMapInstance.current = map;
     setTimeout(() => map.invalidateSize(), 200);
-    return () => { map.remove(); miniMapInstance.current = null; };
+    return () => { map.remove(); miniMapInstance.current = null; markerRef.current = null; };
   }, [location?.lat, location?.lng]);
 
-  return <div ref={miniMapRef} style={{ height: 180, borderRadius: 8, border: ".5px solid var(--color-border-tertiary)", marginTop: 8 }} />;
+  const search = (q) => {
+    clearTimeout(debounceRef.current);
+    setQuery(q);
+    if (!q.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=vn&accept-language=fr`,
+          { headers: { "User-Agent": "VietnamKanban/1.0" } }
+        );
+        const data = await r.json();
+        setResults(data.map(d => ({ label: d.display_name, lat: +d.lat, lng: +d.lon })));
+      } catch (e) { setResults([]); }
+      finally { setLoading(false); }
+    }, 500);
+  };
+
+  const pick = (loc) => {
+    setResults([]);
+    setQuery(loc.label);
+    const picked = { lat: Math.round(loc.lat * 10000) / 10000, lng: Math.round(loc.lng * 10000) / 10000, label: loc.label };
+    if (miniMapInstance.current) {
+      if (markerRef.current) markerRef.current.setLatLng([picked.lat, picked.lng]);
+      else markerRef.current = L.marker([picked.lat, picked.lng]).addTo(miniMapInstance.current);
+      miniMapInstance.current.setView([picked.lat, picked.lng], 16);
+    }
+    onChange(picked);
+  };
+
+  return (
+    <div>
+      <div style={{ position: "relative", marginBottom: 6 }}>
+        <input
+          className="ki"
+          value={query}
+          onChange={e => search(e.target.value)}
+          placeholder="Rechercher un lieu précis (hôtel, restaurant…)"
+          style={{ width: "100%", boxSizing: "border-box" }}
+        />
+        {loading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--color-text-secondary)" }}>…</span>}
+        {results.length > 0 && (
+          <div style={{ position: "absolute", zIndex: 1000, left: 0, right: 0, background: "var(--color-background-primary)", border: "1px solid var(--color-border-tertiary)", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,.15)", marginTop: 2 }}>
+            {results.map((r, i) => (
+              <div key={i} onClick={() => pick(r)} style={{ padding: "8px 12px", cursor: "pointer", fontSize: 12, color: "var(--color-text-primary)", borderBottom: i < results.length - 1 ? "1px solid var(--color-border-tertiary)" : "none" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                {r.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div ref={miniMapRef} style={{ height: 180, borderRadius: 8, border: ".5px solid var(--color-border-tertiary)" }} />
+    </div>
+  );
 }
 
 // --- Map View ---
