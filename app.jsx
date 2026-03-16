@@ -168,7 +168,8 @@ function App() {
     });
 
     // Fallback detection via URL hash in case event fires too early or we hit reload
-    if (window.location.hash.includes('type=recovery')) {
+    // Also handles invite links (type=invite) so new users are prompted to set a password
+    if (window.location.hash.includes('type=recovery') || window.location.hash.includes('type=invite')) {
       setResetMode(true);
     }
 
