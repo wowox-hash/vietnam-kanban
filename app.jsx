@@ -1,5 +1,6 @@
 const { useState, useEffect, useRef } = React;
-const { DragDropContext, Droppable, Draggable } = window.ReactBeautifulDnd;
+// Step 4: @hello-pangea/dnd — actively maintained fork of react-beautiful-dnd (same API)
+const { DragDropContext, Droppable, Draggable } = window.HelloPangeaDnd;
 const { createClient } = window.supabase;
 
 const SUPABASE_URL = 'https://phnwcmkbtaivdnzfaqoz.supabase.co';
@@ -32,7 +33,6 @@ const PARTICIPANTS = [
   { id: "max", name: "Max", initials: "MX", color: "#D85A30" },
 ];
 
-// Step 2: File upload validation constants
 const ALLOWED_UPLOAD_TYPES = ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx", "xls", "xlsx", "txt", "zip"];
 const MAX_FILE_SIZE_MB = 10;
 
@@ -63,7 +63,6 @@ function getParticipant(idOrName) {
   return { id: idOrName, name: idOrName, initials: idOrName.slice(0, 2).toUpperCase(), color: `hsl(${Math.abs(hash) % 360}, 65%, 45%)` };
 }
 
-// Step 5: Toast notification component (replaces all alert() calls)
 function Toast({ toast }) {
   if (!toast) return null;
   const colors = { info: "#378ADD", success: "#639922", error: "#E24B4A", warn: "#EF9F27" };
@@ -80,7 +79,6 @@ function Toast({ toast }) {
   );
 }
 
-// Step 5: Inline confirmation dialog (replaces all confirm() calls)
 function ConfirmDialog({ confirm, onCancel }) {
   if (!confirm) return null;
   return (
@@ -109,13 +107,9 @@ const DatePicker = ({ value, onChange }) => {
       locale: "fr",
       defaultDate: defaultVal,
       onReady: function(selectedDates, dateStr, instance) {
-        if (!defaultVal) {
-          instance.jumpToDate(new Date(2026, 6, 1));
-        }
+        if (!defaultVal) instance.jumpToDate(new Date(2026, 6, 1));
       },
-      onChange: (selectedDates, dateStr) => {
-        onChangeRef.current(dateStr);
-      }
+      onChange: (selectedDates, dateStr) => { onChangeRef.current(dateStr); }
     });
     return () => fp.destroy();
   }, [value]);
@@ -128,47 +122,50 @@ function App() {
   const [cards, setCards] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [editCard, setEditCard] = useState(null);
-  const [filter, setFilter] = useState({ category: "all", owner: "all", assignee: "all", search: "" });
+  // Step 6: filter initialized from localStorage; search always resets to ""
+  const [filter, setFilter] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kanban_filter');
+      return saved ? { ...JSON.parse(saved), search: "" } : { category: "all", owner: "all", assignee: "all", search: "" };
+    } catch { return { category: "all", owner: "all", assignee: "all", search: "" }; }
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMsg, setLoginMsg] = useState('');
   const [resetMode, setResetMode] = useState(false);
-  // Step 5: Toast + confirm dialog state
   const [toast, setToast] = useState(null);
   const [confirm, setConfirm] = useState(null);
-  // Step 6: Saving indicator state
   const [saving, setSaving] = useState(false);
+  // Step 3: inline input state replaces both prompt() calls
+  const [inlineInput, setInlineInput] = useState({ type: null, value: '', cardId: null });
   const fileRef = useRef(null);
+  // Step 1: debounce timers keyed by card id
+  const debounceTimers = useRef({});
+  // Step 2: card ids that are local-only (not yet inserted to DB)
+  const pendingCardIds = useRef(new Set());
 
-  // Step 5: notify() replaces all alert() calls
+  // Step 6: persist filter changes to localStorage (search excluded)
+  useEffect(() => {
+    localStorage.setItem('kanban_filter', JSON.stringify({ ...filter, search: "" }));
+  }, [filter]);
+
   const notify = (msg, type = "info") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Step 5: askConfirm() replaces all confirm() calls
   const askConfirm = (message, onConfirm, confirmLabel = "Supprimer") => {
-    setConfirm({
-      message,
-      onConfirm: () => { setConfirm(null); onConfirm(); },
-      confirmLabel
-    });
+    setConfirm({ message, onConfirm: () => { setConfirm(null); onConfirm(); }, confirmLabel });
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+    supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setResetMode(true);
-      }
+      if (event === 'PASSWORD_RECOVERY') setResetMode(true);
       setSession(session);
     });
 
-    // Fallback detection via URL hash in case event fires too early or we hit reload
-    // Also handles invite links (type=invite) so new users are prompted to set a password
     if (window.location.hash.includes('type=recovery') || window.location.hash.includes('type=invite')) {
       setResetMode(true);
     }
@@ -178,10 +175,7 @@ function App() {
 
   useEffect(() => {
     if (!session) return;
-
     fetchCards();
-
-    // Step 7: Smarter real-time sync — apply granular updates instead of full refetch
     const channel = supabase
       .channel('public:cards')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cards' }, payload => {
@@ -194,17 +188,13 @@ function App() {
         }
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
   const fetchCards = async () => {
     const { data, error } = await supabase.from('cards').select('*');
     if (error) console.error(error);
-    else {
-      setCards(data);
-      setLoaded(true);
-    }
+    else { setCards(data); setLoaded(true); }
   };
 
   const signIn = async (e) => {
@@ -215,9 +205,7 @@ function App() {
     else setLoginMsg("Connecté !");
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-  };
+  const signOut = async () => { await supabase.auth.signOut(); };
 
   const updatePassword = async (e) => {
     e.preventDefault();
@@ -229,33 +217,76 @@ function App() {
       setLoginMsg("Mot de passe mis à jour !");
       setResetMode(false);
       setPassword('');
-      // Step 5: replaced alert() with notify()
       notify("Votre mot de passe a été créé/modifié avec succès !", "success");
     }
   };
 
-  // Step 6: up() now sets saving state so the UI can reflect pending writes
+  // For dropdowns and immediate-value fields — skips DB write if card is pending insert
   const up = async (id, u) => {
-    setSaving(true);
     setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
+    if (pendingCardIds.current.has(id)) return;
+    setSaving(true);
     const { error } = await supabase.from('cards').update(u).eq('id', id);
-    if (error) {
-      console.error(error);
-      fetchCards();
-      notify("Erreur lors de la sauvegarde.", "error");
-    }
+    if (error) { console.error(error); fetchCards(); notify("Erreur lors de la sauvegarde.", "error"); }
     setSaving(false);
   };
 
-  // Step 5: del() uses askConfirm() instead of window.confirm()
+  // Step 1: debounced version for title/desc — batches keystrokes into one DB write per 500ms
+  const upText = (id, u) => {
+    setCards(cs => cs.map(c => c.id === id ? { ...c, ...u } : c));
+    if (pendingCardIds.current.has(id)) return;
+    clearTimeout(debounceTimers.current[id]);
+    debounceTimers.current[id] = setTimeout(async () => {
+      delete debounceTimers.current[id];
+      setSaving(true);
+      const { error } = await supabase.from('cards').update(u).eq('id', id);
+      if (error) { console.error(error); fetchCards(); notify("Erreur lors de la sauvegarde.", "error"); }
+      setSaving(false);
+    }, 500);
+  };
+
+  // Step 2: add() creates card locally only — DB insert deferred to closeModal()
+  const add = (col) => {
+    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium", position: null };
+    pendingCardIds.current.add(nc.id);
+    setCards(cs => [...cs, nc]);
+    setEditCard(nc.id);
+  };
+
+  // Step 2: closeModal() — inserts pending card on close, or discards it if title is empty
+  const closeModal = () => {
+    const id = editCard;
+    setEditCard(null);
+    setInlineInput({ type: null, value: '', cardId: null });
+
+    if (pendingCardIds.current.has(id)) {
+      pendingCardIds.current.delete(id);
+      const card = cards.find(c => c.id === id);
+      if (!card || !card.title.trim()) {
+        setCards(cs => cs.filter(c => c.id !== id));
+        return;
+      }
+      supabase.from('cards').insert([card]).then(({ error }) => {
+        if (error) { console.error(error); setCards(cs => cs.filter(c => c.id !== id)); notify("Erreur lors de la création.", "error"); }
+      });
+    }
+  };
+
   const del = (id) => {
+    // Step 2: pending card has no DB row — just remove from local state
+    if (pendingCardIds.current.has(id)) {
+      pendingCardIds.current.delete(id);
+      clearTimeout(debounceTimers.current[id]);
+      delete debounceTimers.current[id];
+      setCards(cs => cs.filter(c => c.id !== id));
+      setEditCard(null);
+      return;
+    }
     askConfirm("Êtes-vous sûr de vouloir supprimer cette tâche ?", async () => {
       const card = cards.find(c => c.id === id);
       if (card && card.docs && card.docs.length > 0) {
         const pathsToDelete = card.docs.map(d => d.path).filter(Boolean);
-        if (pathsToDelete.length > 0) {
-          await supabase.storage.from('kanban_docs').remove(pathsToDelete);
-        }
+        if (pathsToDelete.length > 0) await supabase.storage.from('kanban_docs').remove(pathsToDelete);
       }
       setCards(cs => cs.filter(c => c.id !== id));
       setEditCard(null);
@@ -264,15 +295,32 @@ function App() {
     });
   };
 
-  const add = async (col) => {
-    const nc = { id: uid(), title: "", desc: "", column: col, category: "other", day: "", assignees: [], owner: null, docs: [], priority: "medium" };
-    setCards(cs => [...cs, nc]);
-    setEditCard(nc.id);
-    const { error } = await supabase.from('cards').insert([nc]);
-    if (error) {
-      console.error(error);
-      fetchCards();
+  const fup = async (cid, e) => {
+    const fs = e.target.files;
+    if (!fs.length) return;
+    const card = cards.find(c => c.id === cid);
+    const nd = [];
+    for (const f of fs) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_UPLOAD_TYPES.includes(ext)) { notify(`Type de fichier non autorisé : .${ext}`, "error"); continue; }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) { notify(`Fichier trop volumineux (max ${MAX_FILE_SIZE_MB} Mo) : ${f.name}`, "error"); continue; }
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
+      const filePath = `${cid}/${fileName}`;
+      const { error } = await supabase.storage.from('kanban_docs').upload(filePath, f);
+      if (error) { notify("Erreur d'upload : " + error.message, "error"); continue; }
+      const { data } = supabase.storage.from('kanban_docs').getPublicUrl(filePath);
+      nd.push({ name: f.name, type: ext, size: (f.size / 1024).toFixed(0) + " KB", addedAt: new Date().toLocaleDateString("fr-FR"), path: filePath, url: data.publicUrl });
     }
+    if (nd.length) up(cid, { docs: [...(card.docs || []), ...nd] });
+  };
+
+  const rd = (cid, i) => {
+    askConfirm("Supprimer ce document ?", async () => {
+      const card = cards.find(c => c.id === cid);
+      const doc = card.docs[i];
+      if (doc.path) await supabase.storage.from('kanban_docs').remove([doc.path]);
+      up(cid, { docs: card.docs.filter((_, j) => j !== i) });
+    });
   };
 
   if (resetMode) {
@@ -302,7 +350,6 @@ function App() {
             <button className="bt bp" style={{ flex: 1 }} type="submit">Se connecter</button>
           </div>
           <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 16, textAlign: "center" }}>{loginMsg}</p>
-          {/* Step 5: replaced alert() with notify() */}
           <button type="button" onClick={async () => {
             if (!email) return notify("Veuillez saisir votre email d'abord !", "warn");
             try {
@@ -326,49 +373,27 @@ function App() {
     return true;
   });
 
+  // Step 5: position-based drag (within and across columns)
   const handleDragEnd = (result) => {
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
-    if (source.droppableId !== destination.droppableId) {
-      up(draggableId, { column: destination.droppableId });
-    }
-  };
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
-  // Step 2: fup() now validates file type and size before uploading
-  const fup = async (cid, e) => {
-    const fs = e.target.files;
-    if (!fs.length) return;
-    const card = cards.find(c => c.id === cid);
-    const nd = [];
-    for (const f of fs) {
-      const ext = f.name.split('.').pop().toLowerCase();
-      if (!ALLOWED_UPLOAD_TYPES.includes(ext)) {
-        notify(`Type de fichier non autorisé : .${ext}`, "error");
-        continue;
-      }
-      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        notify(`Fichier trop volumineux (max ${MAX_FILE_SIZE_MB} Mo) : ${f.name}`, "error");
-        continue;
-      }
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-      const filePath = `${cid}/${fileName}`;
-      const { error } = await supabase.storage.from('kanban_docs').upload(filePath, f);
-      // Step 5: replaced alert() with notify()
-      if (error) { notify("Erreur d'upload : " + error.message, "error"); continue; }
-      const { data } = supabase.storage.from('kanban_docs').getPublicUrl(filePath);
-      nd.push({ name: f.name, type: ext, size: (f.size / 1024).toFixed(0) + " KB", addedAt: new Date().toLocaleDateString("fr-FR"), path: filePath, url: data.publicUrl });
-    }
-    if (nd.length) up(cid, { docs: [...(card.docs || []), ...nd] });
-  };
+    const newColumn = destination.droppableId;
+    const sortedDestCards = cards
+      .filter(c => c.column === newColumn && c.id !== draggableId)
+      .sort((a, b) => (a.position ?? 999999) - (b.position ?? 999999));
 
-  // Step 5: rd() uses askConfirm() instead of window.confirm()
-  const rd = (cid, i) => {
-    askConfirm("Supprimer ce document ?", async () => {
-      const card = cards.find(c => c.id === cid);
-      const doc = card.docs[i];
-      if (doc.path) await supabase.storage.from('kanban_docs').remove([doc.path]);
-      up(cid, { docs: card.docs.filter((_, j) => j !== i) });
-    });
+    const prevCard = sortedDestCards[destination.index - 1];
+    const nextCard = sortedDestCards[destination.index];
+
+    let newPosition;
+    if (!prevCard && !nextCard) newPosition = 1000;
+    else if (!prevCard) newPosition = (nextCard.position ?? 1000) - 500;
+    else if (!nextCard) newPosition = (prevCard.position ?? 0) + 1000;
+    else newPosition = ((prevCard.position ?? 0) + (nextCard.position ?? 0)) / 2;
+
+    up(draggableId, { column: newColumn, position: newPosition });
   };
 
   const st = {
@@ -382,8 +407,6 @@ function App() {
   if (!loaded) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-secondary)" }}>Chargement du Kanban...</div>;
 
   const cat = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[5];
-
-  // Step 4: owner filter list is derived purely from data, no hardcoded IDs
   const allOwners = Array.from(new Set(cards.map(c => c.owner).filter(Boolean)));
 
   return (
@@ -392,7 +415,6 @@ function App() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-text-primary)" }}>🇻🇳 Vietnam 2026 — Kanban</h1>
-            {/* Step 6: saving indicator in subtitle */}
             <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>
               juillet • {st.total} tâches • {st.booked + st.done} confirmées{saving ? " • Enregistrement…" : ""}
             </p>
@@ -403,7 +425,6 @@ function App() {
               <option value="all">Toutes catégories</option>
               {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
             </select>
-            {/* Step 4: owner list is data-driven, no hardcoded filter */}
             <select className="ks" value={filter.owner} onChange={e => setFilter(f => ({ ...f, owner: e.target.value }))}>
               <option value="all">Tous propriétaires</option>
               {allOwners.map(id => <option key={id} value={id}>👑 {getParticipant(id)?.name}</option>)}
@@ -434,9 +455,14 @@ function App() {
       <div style={{ display: "flex", gap: 12, padding: "16px 12px", overflowX: "auto", minHeight: "calc(100vh - 140px)" }}>
         <DragDropContext onDragEnd={handleDragEnd}>
           {COLUMNS.map(col => {
+            // Steps 5 + 7: sort by position first, then priority, then created_at as tiebreaker
             const cc = fc.filter(c => c.column === col.id).sort((a, b) => {
+              const posDiff = (a.position ?? 999999) - (b.position ?? 999999);
+              if (posDiff !== 0) return posDiff;
               const p = { high: 0, medium: 1, low: 2 };
-              return (p[a.priority] || 1) - (p[b.priority] || 1);
+              const priDiff = (p[a.priority] || 1) - (p[b.priority] || 1);
+              if (priDiff !== 0) return priDiff;
+              return new Date(a.created_at || 0) - new Date(b.created_at || 0);
             });
             return (
               <Droppable key={col.id} droppableId={col.id}>
@@ -504,20 +530,22 @@ function App() {
         const card = cards.find(c => c.id === editCard);
         if (!card) return null;
         return (
-          <div className="ov" onClick={e => { if (e.target === e.currentTarget) setEditCard(null); }}>
+          <div className="ov" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
             <div className="mo" onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)" }}>Modifier la carte</h2>
-                <button onClick={() => setEditCard(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--color-text-secondary)" }}>×</button>
+                <button onClick={closeModal} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--color-text-secondary)" }}>×</button>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Titre</label>
-                  <input className="ki" value={card.title} onChange={e => up(card.id, { title: e.target.value })} placeholder="Titre..." />
+                  {/* Step 1: upText() debounces DB write */}
+                  <input className="ki" value={card.title} onChange={e => upText(card.id, { title: e.target.value })} placeholder="Titre..." autoFocus />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 4, display: "block" }}>Description</label>
-                  <textarea className="ki" rows={3} value={card.desc} onChange={e => up(card.id, { desc: e.target.value })} placeholder="Détails, notes, liens..." style={{ resize: "vertical" }} />
+                  {/* Step 1: upText() debounces DB write */}
+                  <textarea className="ki" rows={3} value={card.desc} onChange={e => upText(card.id, { desc: e.target.value })} placeholder="Détails, notes, liens..." style={{ resize: "vertical" }} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
@@ -552,17 +580,40 @@ function App() {
                     <div style={{ flex: 1, minWidth: 200, background: "var(--color-background-secondary)", padding: 12, borderRadius: 8 }}>
                       <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 6, display: "block", textTransform: "uppercase" }}>👑 Propriétaire de la tâche</label>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {/* Step 4: all PARTICIPANTS shown, not a hardcoded subset */}
                         <select className="ks" style={{ width: "100%" }} value={card.owner || ""} onChange={e => up(card.id, { owner: e.target.value || null })}>
                           <option value="">Sélectionner...</option>
                           {PARTICIPANTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                           {card.owner && !PARTICIPANTS.find(p => p.id === card.owner) && <option value={card.owner}>{card.owner}</option>}
                         </select>
-                        {/* Step 3: prompt() input is trimmed and length-validated */}
-                        <button className="bt" onClick={() => {
-                          const n = prompt("Nom du nouveau propriétaire :");
-                          if (n && n.trim().length > 0 && n.trim().length <= 50) up(card.id, { owner: n.trim() });
-                        }} style={{ padding: "6px", fontSize: 12 }}>+ Créer</button>
+                        {/* Step 3: inline input replaces prompt() for custom owner */}
+                        {inlineInput.type === 'owner' && inlineInput.cardId === card.id ? (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <input
+                              className="ki"
+                              style={{ fontSize: 13, padding: "4px 8px" }}
+                              placeholder="Nom..."
+                              value={inlineInput.value}
+                              autoFocus
+                              onChange={e => setInlineInput(s => ({ ...s, value: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  const n = inlineInput.value.trim();
+                                  if (n && n.length <= 50) up(card.id, { owner: n });
+                                  setInlineInput({ type: null, value: '', cardId: null });
+                                }
+                                if (e.key === 'Escape') setInlineInput({ type: null, value: '', cardId: null });
+                              }}
+                            />
+                            <button className="bt bp" style={{ padding: "4px 8px" }} onClick={() => {
+                              const n = inlineInput.value.trim();
+                              if (n && n.length <= 50) up(card.id, { owner: n });
+                              setInlineInput({ type: null, value: '', cardId: null });
+                            }}>✓</button>
+                            <button className="bt" style={{ padding: "4px 8px" }} onClick={() => setInlineInput({ type: null, value: '', cardId: null })}>×</button>
+                          </div>
+                        ) : (
+                          <button className="bt" onClick={() => setInlineInput({ type: 'owner', value: '', cardId: card.id })} style={{ padding: "6px 10px", fontSize: 12, whiteSpace: "nowrap" }}>+ Créer</button>
+                        )}
                       </div>
                     </div>
                     <div style={{ flex: 2, minWidth: 260 }}>
@@ -600,13 +651,35 @@ function App() {
                             </div>
                           );
                         })}
-                        {/* Step 3: prompt() input is trimmed and length-validated */}
-                        <button className="bt" onClick={() => {
-                          const n = prompt("Nouveau participant :");
-                          if (n && n.trim().length > 0 && n.trim().length <= 50 && !(card.assignees || []).includes(n.trim())) {
-                            up(card.id, { assignees: [...(card.assignees || []), n.trim()] });
-                          }
-                        }} style={{ padding: "4px 12px", borderRadius: 20, fontSize: 13 }}>+ Autre</button>
+                        {/* Step 3: inline input replaces prompt() for custom participant */}
+                        {inlineInput.type === 'participant' && inlineInput.cardId === card.id ? (
+                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <input
+                              className="ki"
+                              style={{ fontSize: 13, padding: "4px 8px", width: 130 }}
+                              placeholder="Nom..."
+                              value={inlineInput.value}
+                              autoFocus
+                              onChange={e => setInlineInput(s => ({ ...s, value: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  const n = inlineInput.value.trim();
+                                  if (n && n.length <= 50 && !(card.assignees || []).includes(n)) up(card.id, { assignees: [...(card.assignees || []), n] });
+                                  setInlineInput({ type: null, value: '', cardId: null });
+                                }
+                                if (e.key === 'Escape') setInlineInput({ type: null, value: '', cardId: null });
+                              }}
+                            />
+                            <button className="bt bp" style={{ padding: "4px 8px" }} onClick={() => {
+                              const n = inlineInput.value.trim();
+                              if (n && n.length <= 50 && !(card.assignees || []).includes(n)) up(card.id, { assignees: [...(card.assignees || []), n] });
+                              setInlineInput({ type: null, value: '', cardId: null });
+                            }}>✓</button>
+                            <button className="bt" style={{ padding: "4px 8px" }} onClick={() => setInlineInput({ type: null, value: '', cardId: null })}>×</button>
+                          </div>
+                        ) : (
+                          <button className="bt" onClick={() => setInlineInput({ type: 'participant', value: '', cardId: card.id })} style={{ padding: "4px 12px", borderRadius: 20, fontSize: 13 }}>+ Autre</button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -630,9 +703,7 @@ function App() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 14, borderTop: ".5px solid var(--color-border-tertiary)" }}>
                   <button className="bt bd" onClick={() => del(card.id)} style={{ fontSize: 13 }}>Supprimer</button>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="bt bp" onClick={() => setEditCard(null)} style={{ fontSize: 13 }}>Fermer</button>
-                  </div>
+                  <button className="bt bp" onClick={closeModal} style={{ fontSize: 13 }}>Fermer</button>
                 </div>
               </div>
             </div>
